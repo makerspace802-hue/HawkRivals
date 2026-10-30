@@ -4,12 +4,12 @@ const __dirname = import.meta.dirname
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { inspectAttr } from 'kimi-plugin-inspect-react'
-import { attachRealtime } from './api/realtime'
+import { attachRealtime } from './server/realtime'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    devServer({ entry: "api/boot.ts", exclude: [/^\/(?!api\/).*$/] }),
+    devServer({ entry: "server/boot.ts", exclude: [/^\/(?!api\/).*$/] }),
     inspectAttr(), react(),
     { name: 'nimbus-realtime', configureServer(server) { if (server.httpServer) attachRealtime(server.httpServer); } }
   ],
