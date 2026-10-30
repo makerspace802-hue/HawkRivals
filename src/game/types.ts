@@ -22,7 +22,7 @@ export interface Snapshot { players: NetPlayer[]; remaining: number; leader: num
 export interface HUDState {
   phase: GamePhase; health: number; maxHealth: number; shield: number; ammo: number;
   magazine: number; reloading: boolean; reloadProgress: number; kills: number; deaths: number;
-  remaining: number; abilityCooldown: number; grenadeCooldown: number; hit: number; damaged: number;
+  remaining: number; abilityCooldown: number; grenadeCooldown: number; hit: number; damaged: number; hitDamage: number; hitCritical: boolean;
   aim: boolean; sprinting: boolean; position: { x: number; z: number }; connected: boolean;
   room: string; players: NetPlayer[]; feed: KillEvent[]; message: string; messageTime: number;
   pointerLocked: boolean; shots: number; hits: number; respawn: number; leader: number; target: number;

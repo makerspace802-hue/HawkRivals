@@ -51,6 +51,9 @@ export class GameEngine {
   private fireTimer = 0;
   private reloadTimer = 0;
   private recoil = 0;
+  private shake = 0;
+  private lastHp = 0;
+  private lastShield = 0;
   private invincible = 0;
   private dashTime = 0;
   private walkTime = 0;
@@ -117,8 +120,8 @@ export class GameEngine {
   }
   private onMessage(msg: { type: string; id?: string; room?: string; damage?: number; headshot?: boolean; killer?: string; message?: string } & Partial<Snapshot>) {
     if (msg.type === 'joined') { this.playerId = msg.id!; this.hud.room = msg.room!; }
-    if (msg.type === 'hit') { this.hud.hit = 1; this.hud.hits++; this.audio.hit(!!msg.headshot); }
-    if (msg.type === 'death') { this.hud.deaths++; this.hud.health = 0; this.hud.shield = 0; this.hud.respawn = 3; this.firing = false; this.announce('ELIMINATED', `${msg.killer} took the duel. Redeploying…`, 3); }
+    if (msg.type === 'hit') { this.hud.hit = 1; this.hud.hits++; this.hud.hitDamage = msg.damage ?? 0; this.hud.hitCritical = !!msg.headshot; this.audio.hit(!!msg.headshot); }
+    if (msg.type === 'death') { this.hud.deaths++; this.hud.health = 0; this.hud.shield = 0; this.hud.damaged = 1; this.shake = .85; this.hud.respawn = 3; this.firing = false; this.announce('ELIMINATED', `${msg.killer} took the duel. Redeploying…`, 3); }
     if (msg.type === 'error') this.announce('ARENA NOTICE', msg.message || 'Network error', 4);
     if (msg.type === 'snapshot') this.applySnapshot(msg as Snapshot);
   }
@@ -126,35 +129,49 @@ export class GameEngine {
     this.hud.players = s.players; this.hud.remaining = s.remaining; this.hud.leader = s.leader; this.hud.target = s.target; this.hud.feed = s.feed;
     const me = s.players.find(p => p.id === this.playerId);
     if (me) {
+      const before = this.lastHp + this.lastShield, after = me.hp + me.shield;
+      if (this.serverAlive && !this.needsSpawn && me.alive && after < before - .5) {
+        const taken = before - after;
+        this.hud.damaged = Math.min(1, .4 + taken / 85);
+        this.shake = Math.min(.7, .2 + taken / 130);
+        this.audio.damage();
+      }
       if (me.alive && (this.needsSpawn || !this.serverAlive)) { this.camera.position.set(me.x, me.y, me.z); this.velocity.set(0,0,0); this.verticalVelocity = 0; this.needsSpawn = false; this.invincible = 2; }
-      this.serverAlive = me.alive; this.hud.kills = me.kills; this.hud.deaths = me.deaths; this.hud.health = me.hp; this.hud.shield = me.shield; this.hud.respawn = me.respawn;
+      this.serverAlive = me.alive; this.lastHp = me.hp; this.lastShield = me.shield; this.hud.kills = me.kills; this.hud.deaths = me.deaths; this.hud.health = me.hp; this.hud.shield = me.shield; this.hud.respawn = me.respawn;
     }
     const alive = new Set(s.players.filter(p => p.id !== this.playerId && p.alive).map(p => p.id));
     for (const [id, remote] of this.remotes) if (!alive.has(id)) { this.scene.remove(remote.mesh); this.scene.remove(remote.label); disposeObject(remote.mesh); remote.label.material.map?.dispose(); remote.label.material.dispose(); this.remotes.delete(id); }
     for (const p of s.players) {
       if (p.id === this.playerId || !p.alive) continue;
       let remote = this.remotes.get(p.id);
-      if (!remote) { const mesh = createEngineer(p.engineer); mesh.scale.setScalar(.82); const label = this.makeLabel(p); this.scene.add(mesh, label); remote = { mesh, label, target: new THREE.Vector3(p.x, p.y - 1.75, p.z), last: p }; this.remotes.set(p.id, remote); }
-      remote.target.set(p.x, p.y - 1.75, p.z); remote.last = p; remote.mesh.rotation.y = p.yaw; remote.label.position.set(p.x, p.y + .65, p.z);
+      if (!remote) { const mesh = createEngineer(p.engineer); mesh.scale.setScalar(.82); this.setRemoteWeapon(mesh, p.weapon); const label = this.makeLabel(p); this.scene.add(mesh, label); remote = { mesh, label, target: new THREE.Vector3(p.x, p.y - 1.75, p.z), last: p }; this.remotes.set(p.id, remote); }
+      else if (remote.mesh.userData.weaponId !== p.weapon) this.setRemoteWeapon(remote.mesh, p.weapon);
+      remote.target.set(p.x, p.y - 1.75, p.z); remote.last = p; remote.mesh.rotation.y = p.yaw + Math.PI; remote.label.position.set(p.x, p.y + .65, p.z);
     }
     for (const feed of s.feed) if (feed.id > this.feedSeen) { this.feedSeen = feed.id; if (feed.killer !== 'VEX-7' && feed.killer !== 'KITE' && feed.killer !== 'ROOK') this.audio.kill(); }
     if ((s.remaining <= 0 || s.leader >= s.target) && this.hud.phase === 'playing') { this.hud.phase = 'ended'; this.weaponGroup.visible = false; if (document.pointerLockElement === this.canvas) document.exitPointerLock(); this.audio.win(); }
   }
+  private setRemoteWeapon(mesh: THREE.Group, id: WeaponId) {
+    const hand = mesh.userData.hand as THREE.Group | undefined; if (!hand) return;
+    const old = mesh.userData.weapon as THREE.Object3D | undefined; if (old) { hand.remove(old); disposeObject(old); }
+    const weapon = createWeapon(id); weapon.scale.setScalar(.6); weapon.rotation.set(0, Math.PI, 0); weapon.position.set(0, 0, .38); hand.add(weapon);
+    mesh.userData.weapon = weapon; mesh.userData.weaponId = id;
+  }
   private makeLabel(p: NetPlayer) { const c = document.createElement('canvas'); c.width = 256; c.height = 64; const ctx = c.getContext('2d')!; ctx.fillStyle = 'rgba(8,20,25,.75)'; ctx.fillRect(20, 4, 216, 46); ctx.fillStyle = '#e8fff9'; ctx.font = '600 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(p.name, 128, 35); const map = new THREE.CanvasTexture(c); const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: false })); sprite.scale.set(1.85, .46, 1); return sprite; }
   pause() { if (this.hud.phase !== 'playing') return; this.hud.phase = 'paused'; this.firing = false; this.keys.clear(); if (document.pointerLockElement === this.canvas) document.exitPointerLock(); this.publish(); }
   resume() { if (this.hud.phase !== 'paused') return; this.hud.phase = 'playing'; this.previous = performance.now(); this.requestPointerLock(); this.publish(); }
-  returnToMenu() { this.ws?.close(); this.ws = null; this.playerId = ''; for (const r of this.remotes.values()) { this.scene.remove(r.mesh, r.label); disposeObject(r.mesh); } this.remotes.clear(); this.hud = structuredClone(EMPTY_HUD); this.world.engineer.visible = true; this.world.sailfin.visible = true; this.weaponGroup.visible = false; this.camera.position.set(28, 10, 46); this.camera.lookAt(0, 8, -30); this.publish(); }
+  returnToMenu() { this.ws?.close(); this.ws = null; this.playerId = ''; for (const r of this.remotes.values()) { this.scene.remove(r.mesh, r.label); disposeObject(r.mesh); } this.remotes.clear(); this.hud = structuredClone(EMPTY_HUD); this.lastHp = 0; this.lastShield = 0; this.world.engineer.visible = true; this.world.sailfin.visible = true; this.weaponGroup.visible = false; this.camera.position.set(28, 10, 46); this.camera.lookAt(0, 8, -30); this.publish(); }
   private announce(message: string, sub = '', time = 3) { this.hud.message = sub ? `${message}|${sub}` : message; this.hud.messageTime = time; }
   private loop = (now: number) => { if (this.disposed) return; const dt = Math.min(this.previous ? (now - this.previous) / 1000 : .016, .05); this.previous = now; this.worldTime += dt; this.world.update(this.worldTime, this.settings.reducedMotion); if (this.hud.phase === 'playing') this.update(dt); else if (this.hud.phase === 'menu') { this.camera.position.x = 28 + Math.sin(this.worldTime * .08) * 2; this.camera.lookAt(0, 8, -30); } this.updateRemotes(dt); this.updateEffects(dt); this.renderer.render(this.scene, this.camera); this.hudClock += dt; if (this.hudClock > .08) { this.hudClock = 0; this.publish(); } this.raf = requestAnimationFrame(this.loop); };
   private update(dt: number) {
-    this.fireTimer = Math.max(0, this.fireTimer - dt); this.invincible = Math.max(0, this.invincible - dt); this.dashTime = Math.max(0, this.dashTime - dt); this.hud.abilityCooldown = Math.max(0, this.hud.abilityCooldown - dt); this.hud.grenadeCooldown = Math.max(0, this.hud.grenadeCooldown - dt); this.hud.hit = Math.max(0, this.hud.hit - dt * 5); this.hud.damaged = Math.max(0, this.hud.damaged - dt * 2); this.hud.messageTime = Math.max(0, this.hud.messageTime - dt);
+    this.fireTimer = Math.max(0, this.fireTimer - dt); this.invincible = Math.max(0, this.invincible - dt); this.dashTime = Math.max(0, this.dashTime - dt); this.hud.abilityCooldown = Math.max(0, this.hud.abilityCooldown - dt); this.hud.grenadeCooldown = Math.max(0, this.hud.grenadeCooldown - dt); this.hud.hit = Math.max(0, this.hud.hit - dt * 5); this.hud.damaged = Math.max(0, this.hud.damaged - dt * 1.8); this.shake = Math.max(0, this.shake - dt * 2.4); this.hud.messageTime = Math.max(0, this.hud.messageTime - dt);
     if (this.hud.reloading) { this.reloadTimer -= dt; this.hud.reloadProgress = 1 - this.reloadTimer / this.weapon.reload; if (this.reloadTimer <= 0) { this.hud.reloading = false; this.hud.ammo = this.weapon.magazine; this.audio.tone(480, .08, 'square', .04, 650); } }
     if (this.hud.respawn <= 0 && this.hud.health > 0) this.move(dt);
     if (this.firing && this.fireTimer <= 0 && !this.hud.reloading && this.hud.respawn <= 0 && (this.weapon.automatic || this.triggerReady)) { this.triggerReady = false; this.shoot(); }
     this.recoil = damp(this.recoil, 0, 12, dt); const reload = this.hud.reloading ? Math.sin(this.hud.reloadProgress * Math.PI) : 0;
     this.weaponGroup.position.x = damp(this.weaponGroup.position.x, this.aiming ? .01 : .34, 12, dt); this.weaponGroup.position.y = damp(this.weaponGroup.position.y, (this.aiming ? -.25 : -.31) - reload * .3, 12, dt); this.weaponGroup.position.z = -.85 + this.recoil * .08; this.weaponGroup.rotation.x = this.recoil * .08 - reload * .4;
     this.camera.fov = damp(this.camera.fov, this.aiming ? (this.weapon.id === 'sniper' ? 35 : 58) : 74, 12, dt); this.camera.updateProjectionMatrix(); this.muzzle.visible = this.fireTimer > this.weapon.rate - .035;
-    this.camera.rotation.set(this.pitch - this.recoil * .006, this.yaw, 0, 'YXZ'); this.hud.aim = this.aiming; this.hud.position = { x: this.camera.position.x, z: this.camera.position.z };
+    const shake = this.shake * this.shake; this.camera.rotation.set(this.pitch - this.recoil * .006 + (Math.random() - .5) * shake * .085, this.yaw + (Math.random() - .5) * shake * .11, (Math.random() - .5) * shake * .045, 'YXZ'); this.hud.aim = this.aiming; this.hud.position = { x: this.camera.position.x, z: this.camera.position.z };
     this.netClock += dt; if (this.netClock > .066 && this.ws?.readyState === WebSocket.OPEN) { this.netClock = 0; this.ws.send(JSON.stringify({ type: 'state', position: this.camera.position.toArray(), yaw: this.yaw, weapon: this.weapon.id })); }
   }
   private move(dt: number) {
@@ -178,11 +195,18 @@ export class GameEngine {
   private shoot() {
     if (this.hud.ammo <= 0) { this.reload(); return; } this.hud.ammo--; this.hud.shots++; this.fireTimer = this.weapon.rate; this.recoil = this.weapon.id === 'sniper' || this.weapon.id === 'handcannon' ? 1.7 : .75; this.audio.shoot(this.weapon.id === 'handcannon' || this.weapon.id === 'sniper');
     this.camera.getWorldDirection(this.direction); this.direction.x += (this.random() - .5) * this.weapon.spread * (this.aiming ? .35 : 1); this.direction.y += (this.random() - .5) * this.weapon.spread * (this.aiming ? .35 : 1); this.direction.normalize();
-    this.ws?.send(JSON.stringify({ type: 'shoot', dir: this.direction.toArray() })); const from = this.muzzle.getWorldPosition(new THREE.Vector3()), to = this.camera.position.clone().addScaledVector(this.direction, Math.min(this.weapon.range, 80)); this.trace(from, to);
+    this.ws?.send(JSON.stringify({ type: 'shoot', dir: this.direction.toArray() })); const from = this.muzzle.getWorldPosition(new THREE.Vector3()), to = this.camera.position.clone().addScaledVector(this.direction, Math.min(this.weapon.range, 80)); this.trace(from, to); this.impact();
+  }
+  private impact() {
+    if (!this.remotes.size) return;
+    const ray = new THREE.Raycaster(this.camera.position, this.direction, .1, this.weapon.range);
+    const hit = ray.intersectObjects([...this.remotes.values()].map(r => r.mesh), true)[0];
+    if (!hit) return;
+    this.burst(hit.point, this.weapon.color, 5); this.burst(hit.point, '#ffb072', 3);
   }
   private trace(from: THREE.Vector3, to: THREE.Vector3) { const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([from, to]), new THREE.LineBasicMaterial({ color: this.weapon.color, transparent: true, opacity: .8 })); this.scene.add(line); this.traces.push({ line, life: .07 }); }
   private ring(position: THREE.Vector3, color: string) { const mesh = new THREE.Mesh(new THREE.RingGeometry(.7, .85, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .8, side: THREE.DoubleSide })); mesh.position.copy(position); mesh.position.y = terrainHeight(position.x, position.z) + .15; mesh.rotation.x = -Math.PI / 2; mesh.scale.setScalar(.2); this.scene.add(mesh); const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial()); this.traces.push({ line, life: 0 }); const particle = { mesh, velocity: new THREE.Vector3(), life: .7 }; this.particles.push(particle); }
-  private burst(position: THREE.Vector3, color: string) { for (let i = 0; i < 18; i++) { const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(.07), new THREE.MeshBasicMaterial({ color, transparent: true })); mesh.position.copy(position); this.scene.add(mesh); this.particles.push({ mesh, velocity: new THREE.Vector3((this.random() - .5) * 10, this.random() * 8, (this.random() - .5) * 10), life: .5 + this.random() * .4 }); } }
+  private burst(position: THREE.Vector3, color: string, count = 18) { for (let i = 0; i < count; i++) { const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(.07), new THREE.MeshBasicMaterial({ color, transparent: true })); mesh.position.copy(position); this.scene.add(mesh); this.particles.push({ mesh, velocity: new THREE.Vector3((this.random() - .5) * 10, this.random() * 8, (this.random() - .5) * 10), life: .5 + this.random() * .4 }); } }
   private updateEffects(dt: number) { for (let i = this.traces.length - 1; i >= 0; i--) { const t = this.traces[i]; t.life -= dt; if (t.life <= 0) { this.scene.remove(t.line); t.line.geometry.dispose(); (t.line.material as THREE.Material).dispose(); this.traces.splice(i, 1); } } for (let i = this.particles.length - 1; i >= 0; i--) { const p = this.particles[i]; p.life -= dt; p.mesh.position.addScaledVector(p.velocity, dt); p.velocity.y -= dt * 8; p.mesh.scale.addScalar(dt * 5); (p.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, p.life * 1.6); if (p.life <= 0) { this.scene.remove(p.mesh); disposeObject(p.mesh); this.particles.splice(i, 1); } } }
   private publish() { this.callbacks.onHUD({ ...this.hud, players: [...this.hud.players], feed: [...this.hud.feed] }); }
   dispose() { this.disposed = true; cancelAnimationFrame(this.raf); this.ws?.close(); this.cleanup.forEach(fn => fn()); this.resizeObserver.disconnect(); for (const r of this.remotes.values()) disposeObject(r.mesh); disposeObject(this.scene); this.renderer.dispose(); this.canvas.remove(); this.audio.dispose(); }

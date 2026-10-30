@@ -44,44 +44,91 @@ function limb(parent: THREE.Object3D, material: THREE.Material, from: THREE.Vect
 
 export function createEngineer(engineerClass: EngineerClass = 'rigger') {
   const group = new THREE.Group();
-  const dark = armor('#3765ac'), black = armor('#141d20', 0.18, 0.82), bone = armor('#e1e7ee', 0.6), bronze = armor('#d77662');
-  const accent = glow(engineerClass === 'aerostat' ? '#8adeef' : engineerClass === 'mistwright' ? '#c8adf0' : '#8f9ec5', 1.3);
-  const thick = engineerClass === 'aerostat' ? 1.2 : 1;
-  part(group, dark, [0.69 * thick, 0.69, 0.35], [0, 1.64, 0], [0.05, 0, 0], 0.1);
-  part(group, bone, [0.58 * thick, 0.38, 0.13], [0, 1.78, 0.21], [0.09, 0, 0], 0.055);
-  part(group, dark, [0.47, 0.24, 0.32], [0, 1.22, 0], undefined, 0.05);
-  part(group, bronze, [0.59, 0.09, 0.39], [0, 1.31, 0], undefined, 0.015);
-  part(group, accent, [0.1, 0.045, 0.012], [0.17, 1.9, 0.291]);
-  const helmet=new THREE.Group();helmet.position.set(0,2.22,0);group.add(helmet);
-  const canopy=new THREE.Mesh(new THREE.ConeGeometry(.43,.27,8,1,true),bone);canopy.position.y=.12;helmet.add(canopy);
-  for(let n=0;n<8;n++){const a=n*Math.PI/4;limb(helmet,bronze,new THREE.Vector3(0,.25,0),new THREE.Vector3(Math.cos(a)*.43,-.02,Math.sin(a)*.43),.015);}
-  const bowl=new THREE.Mesh(new THREE.SphereGeometry(.25,16,12),dark);helmet.add(bowl);
-  part(helmet,black,[.37,.12,.14],[0,-.015,.19],undefined,.04);
-  for(const side of [-1,1])part(helmet,accent,[.055,.055,.014],[side*.105,-.015,.268],undefined,.02);
-  for(const side of [-1,1]){
-    const balloon=new THREE.Mesh(new THREE.SphereGeometry(.25,16,12),side<0?bone:bronze);balloon.scale.set(1,1.5,.85);balloon.position.set(side*.28,1.93,-.36);group.add(balloon);
-    limb(group,black,new THREE.Vector3(side*.28,1.7,-.36),new THREE.Vector3(side*.27,1.18,-.33),.027);
-  }
+  const palette = engineerClass === 'aerostat'
+    ? { suit: '#2b4a52', plate: '#7fb6bf', trim: '#5fd6cf', glow: '#8adeef' }
+    : engineerClass === 'mistwright'
+    ? { suit: '#383050', plate: '#8a7bb5', trim: '#b795e6', glow: '#c8adf0' }
+    : { suit: '#2f4560', plate: '#5079a8', trim: '#e0896f', glow: '#ffad78' };
+  const under = armor(palette.suit, 0.4, 0.6);
+  const black = armor('#141d20', 0.18, 0.82);
+  const bone = armor('#e1e7ee', 0.6, 0.4);
+  const trim = armor(palette.trim, 0.68, 0.34);
+  const plate = armor(palette.plate, 0.72, 0.32);
+  const accent = glow(palette.glow, 1.7);
+  const thick = engineerClass === 'aerostat' ? 1.16 : 1;
+
+  part(group, under, [0.5, 0.26, 0.34], [0, 1.07, 0], undefined, 0.05);
+  part(group, trim, [0.56, 0.1, 0.38], [0, 1.16, 0], undefined, 0.015);
+  part(group, accent, [0.11, 0.07, 0.02], [0, 1.16, 0.2], undefined, 0.012);
+  for (const side of [-1, 1]) part(group, black, [0.13, 0.14, 0.17], [side * 0.24, 1.04, 0.16], undefined, 0.03);
+
+  part(group, under, [0.72 * thick, 0.5, 0.36], [0, 1.49, 0], [0.03, 0, 0], 0.1);
+  part(group, plate, [0.62 * thick, 0.42, 0.16], [0, 1.54, 0.2], [0.05, 0, 0], 0.06);
+  part(group, bone, [0.4 * thick, 0.26, 0.08], [0, 1.62, 0.28], [0.07, 0, 0], 0.035);
+  part(group, accent, [0.13, 0.05, 0.02], [0, 1.57, 0.328]);
+  part(group, trim, [0.21, 0.04, 0.03], [0, 1.41, 0.316]);
+  part(group, black, [0.44, 0.13, 0.31], [0, 1.77, 0], undefined, 0.04);
+  part(group, trim, [0.5, 0.06, 0.33], [0, 1.82, 0], undefined, 0.02);
+
   for (const side of [-1, 1]) {
-    const shoulderX = 0.43 * side * thick;
-    limb(group, black, new THREE.Vector3(shoulderX, 1.91, 0), new THREE.Vector3(side * 0.51, 1.45, 0.06), 0.135);
-    limb(group, dark, new THREE.Vector3(side * 0.51, 1.48, 0.06), new THREE.Vector3(side * 0.43, 1.17, 0.18), 0.115);
-    part(group, bone, [0.31 * thick, 0.24 * thick, 0.38], [shoulderX, 1.92, 0], [0, 0, side * 0.2], 0.07);
-    part(group, black, [0.2, 0.22, 0.22], [side * 0.43, 1.12, 0.18], [0.08, 0, 0], 0.04);
-    limb(group, black, new THREE.Vector3(side * 0.2, 1.2, 0), new THREE.Vector3(side * 0.24, 0.72, 0.05), 0.145);
-    part(group, dark, [0.24, 0.4, 0.25], [side * 0.235, 0.94, 0.08], [0.03, 0, side * 0.04], 0.04);
-    limb(group, black, new THREE.Vector3(side * 0.24, 0.69, 0.05), new THREE.Vector3(side * 0.29, 0.23, -0.03), 0.1);
-    part(group, bone, [0.225, 0.34, 0.19], [side * 0.26, 0.45, 0.045], [0.12, 0, 0], 0.04);
-    part(group, dark, [0.25, 0.17, 0.42], [side * 0.29, 0.12, 0.08], undefined, 0.03);
-    part(group, bronze, [0.15, 0.08, 0.18], [side * 0.24, 0.7, 0.16], undefined, 0.02);
+    const shoulderX = side * 0.44 * thick;
+    part(group, plate, [0.34 * thick, 0.2, 0.4], [shoulderX, 1.85, 0], [0, 0, side * 0.18], 0.07);
+    part(group, trim, [0.37 * thick, 0.05, 0.42], [shoulderX, 1.93, 0], [0, 0, side * 0.18], 0.02);
+    if (side === 1) {
+      limb(group, black, new THREE.Vector3(shoulderX, 1.82, 0), new THREE.Vector3(side * 0.57, 1.5, 0.22), 0.13);
+      limb(group, under, new THREE.Vector3(side * 0.57, 1.5, 0.22), new THREE.Vector3(side * 0.48, 1.14, 0.5), 0.105);
+      part(group, bone, [0.23, 0.27, 0.31], [side * 0.53, 1.34, 0.36], [0.42, 0, side * 0.05], 0.05);
+      part(group, black, [0.2, 0.18, 0.2], [side * 0.46, 1.12, 0.54], undefined, 0.04);
+    } else {
+      limb(group, black, new THREE.Vector3(shoulderX, 1.82, 0), new THREE.Vector3(side * 0.55, 1.45, 0.06), 0.135);
+      limb(group, under, new THREE.Vector3(side * 0.55, 1.45, 0.06), new THREE.Vector3(side * 0.47, 1.12, 0.18), 0.11);
+      part(group, bone, [0.25, 0.23, 0.25], [side * 0.5, 1.32, 0.12], undefined, 0.05);
+      part(group, black, [0.2, 0.2, 0.22], [side * 0.46, 1.08, 0.2], [0.08, 0, 0], 0.04);
+    }
   }
-  // A short working sail deploys from the balloon pack, clear of the legs.
-  const clothGeometry=new THREE.PlaneGeometry(1.28,.5,12,6);clothGeometry.rotateZ(Math.PI*.06);
-  const cloth=new THREE.Mesh(clothGeometry,new THREE.MeshStandardMaterial({color:engineerClass==='rigger'?'#e17d6c':'#d6e3ee',roughness:.93,side:THREE.DoubleSide}));
-  cloth.position.set(0,1.64,-.48);cloth.castShadow=true;group.add(cloth);
-  const backWeapon = createWeapon('auto'); backWeapon.scale.setScalar(0.72); backWeapon.position.set(-0.38, 1.48, -0.38); backWeapon.rotation.set(-0.3, Math.PI / 2, -0.45); group.add(backWeapon);
-  group.userData.cloth = cloth;
-  mergeModel(group, [cloth]);
+
+  for (const side of [-1, 1]) {
+    limb(group, black, new THREE.Vector3(side * 0.22, 1.04, 0), new THREE.Vector3(side * 0.25, 0.66, 0.05), 0.145);
+    part(group, plate, [0.29, 0.39, 0.28], [side * 0.24, 0.85, 0.11], [0.05, 0, side * 0.03], 0.05);
+    part(group, trim, [0.31, 0.07, 0.3], [side * 0.24, 0.67, 0.11], undefined, 0.02);
+    limb(group, under, new THREE.Vector3(side * 0.25, 0.64, 0.05), new THREE.Vector3(side * 0.28, 0.22, -0.02), 0.105);
+    part(group, bone, [0.24, 0.31, 0.19], [side * 0.27, 0.44, 0.03], [0.12, 0, 0], 0.05);
+    part(group, black, [0.27, 0.16, 0.42], [side * 0.29, 0.11, 0.08], undefined, 0.035);
+    part(group, trim, [0.28, 0.05, 0.44], [side * 0.29, 0.035, 0.08], undefined, 0.01);
+  }
+
+  const helmet = new THREE.Group(); helmet.position.set(0, 2.16, 0); group.add(helmet);
+  const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12), under); bowl.scale.set(1.04, 1.08, 1); helmet.add(bowl);
+  const canopy = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.29, 10, 1, true), bone); canopy.position.y = 0.14; helmet.add(canopy);
+  for (let n = 0; n < 8; n++) { const a = n * Math.PI / 4; limb(helmet, trim, new THREE.Vector3(0, 0.27, 0), new THREE.Vector3(Math.cos(a) * 0.44, -0.02, Math.sin(a) * 0.44), 0.013); }
+  part(helmet, black, [0.38, 0.13, 0.16], [0, -0.01, 0.2], undefined, 0.035);
+  part(helmet, accent, [0.3, 0.035, 0.02], [0, -0.01, 0.29], undefined, 0.012);
+  for (const side of [-1, 1]) {
+    part(helmet, trim, [0.09, 0.15, 0.18], [side * 0.23, -0.02, 0.02], undefined, 0.03);
+    part(helmet, accent, [0.03, 0.04, 0.02], [side * 0.275, -0.02, 0.055]);
+  }
+  part(helmet, trim, [0.06, 0.19, 0.24], [0, 0.33, -0.03], [-0.22, 0, 0], 0.02);
+  limb(helmet, black, new THREE.Vector3(0.18, 0.05, -0.08), new THREE.Vector3(0.27, 0.38, -0.18), 0.012);
+  part(helmet, accent, [0.035, 0.035, 0.035], [0.27, 0.4, -0.18], undefined, 0.01);
+
+  part(group, under, [0.46, 0.52, 0.25], [0, 1.5, -0.3], [0.05, 0, 0], 0.05);
+  part(group, black, [0.3, 0.34, 0.14], [0, 1.48, -0.44], undefined, 0.03);
+  for (const side of [-1, 1]) {
+    const balloon = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 12), side < 0 ? bone : trim);
+    balloon.scale.set(1, 1.45, 0.85); balloon.position.set(side * 0.31, 1.9, -0.4); balloon.castShadow = true; group.add(balloon);
+    limb(group, black, new THREE.Vector3(side * 0.31, 1.68, -0.4), new THREE.Vector3(side * 0.29, 1.2, -0.35), 0.026);
+    part(group, accent, [0.05, 0.08, 0.05], [side * 0.31, 2.19, -0.4], undefined, 0.02);
+  }
+  const rotor = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.028, 8, 20), accent); rotor.position.set(0, 1.72, -0.48); group.add(rotor);
+
+  const clothGeometry = new THREE.PlaneGeometry(1.28, 0.5, 12, 6); clothGeometry.rotateZ(Math.PI * 0.06);
+  const cloth = new THREE.Mesh(clothGeometry, new THREE.MeshStandardMaterial({ color: palette.trim, emissive: palette.glow, emissiveIntensity: 0.14, roughness: 0.93, side: THREE.DoubleSide }));
+  cloth.position.set(0, 1.62, -0.52); cloth.castShadow = true; group.add(cloth);
+
+  const hand = new THREE.Group(); hand.position.set(0.46, 1.12, 0.5); group.add(hand);
+  const defaultWeapon = createWeapon('auto'); defaultWeapon.scale.setScalar(0.6); defaultWeapon.rotation.set(0, Math.PI, 0); defaultWeapon.position.set(0, 0, 0.38); hand.add(defaultWeapon);
+  group.userData.cloth = cloth; group.userData.hand = hand; group.userData.weapon = defaultWeapon; group.userData.weaponId = 'auto';
+  mergeModel(group, [cloth, hand]);
   return group;
 }
 
