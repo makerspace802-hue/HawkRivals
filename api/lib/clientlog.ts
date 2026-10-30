@@ -15,8 +15,8 @@
 //     client-supplied header and is therefore rotatable;
 //   - never echo anything back (a log endpoint is not a reflection surface).
 import type { Context } from "hono";
-import { appendLine } from "./logger";
-import { scrubCtx, scrubValue } from "./scrub";
+import { appendLine } from "./logger.js";
+import { scrubCtx, scrubValue } from "./scrub.js";
 
 const LOG_BODY_MAX = 64 * 1024;
 const LOG_MAX_LINES_PER_REQUEST = 50;

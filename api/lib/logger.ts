@@ -11,8 +11,8 @@
 // surface for a feature whose whole job is "append one JSON line".
 import fs from "fs";
 import path from "path";
-import { currentRequestId } from "./requestcontext";
-import { scrubCtx, scrubValue } from "./scrub";
+import { currentRequestId } from "./requestcontext.js";
+import { scrubCtx, scrubValue } from "./scrub.js";
 
 // Fixed path (not PID-suffixed): the agent must be able to name it without
 // discovering a pid. /tmp is sandbox-local: it dies with the box, which is
