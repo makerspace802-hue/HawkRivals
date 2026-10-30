@@ -10,6 +10,5 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/.env ./.env
 EXPOSE 3000
 CMD ["node", "dist/boot.js"]

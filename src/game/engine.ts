@@ -108,7 +108,7 @@ export class GameEngine {
     this.returnToMenu(); this.needsSpawn = true; this.serverAlive = false; this.setEngineer(engineer); this.weapon = WEAPONS[0]; this.setWeapon(weapon);
     this.hud = structuredClone(EMPTY_HUD); this.hud.phase = 'playing'; this.hud.health = this.hud.maxHealth = this.engineer.health; this.hud.ammo = this.hud.magazine = this.weapon.magazine; this.hud.room = room || 'SKY-01'; this.hud.message = 'CONNECTING TO CIRRUS REACH'; this.hud.messageTime = 5;
     this.world.engineer.visible = false; this.world.sailfin.visible = false; this.weaponGroup.visible = true; this.camera.position.set(0, terrainHeight(0, 27) + 1.75, 27); this.yaw = 0; this.pitch = 0;
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'; this.ws = new WebSocket(`${protocol}//${location.host}/ws`);
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'; const configured = import.meta.env.VITE_WS_URL as string | undefined; this.ws = new WebSocket(configured || `${protocol}//${location.host}/ws`);
     this.ws.onopen = () => { this.hud.connected = true; this.ws?.send(JSON.stringify({ type: 'join', name, room, engineer, weapon })); this.announce('FREE-FOR-ALL', 'First to 15 eliminations. Wind frames fill open slots.', 4); };
     this.ws.onmessage = e => this.onMessage(JSON.parse(e.data));
     this.ws.onerror = () => this.callbacks.onError('Could not reach the arena server. Check your connection and retry.');
