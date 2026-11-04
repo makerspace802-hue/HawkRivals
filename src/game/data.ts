@@ -47,7 +47,7 @@ export const DEFAULT_SETTINGS = { volume: .35, sensitivity: 1, quality: 'high' a
 export const EMPTY_HUD: HUDState = {
   phase: 'menu', health: 100, maxHealth: 100, shield: 50, ammo: 30, magazine: 30,
   reloading: false, reloadProgress: 0, kills: 0, deaths: 0, remaining: 300,
-  abilityCooldown: 0, grenadeCooldown: 0, hit: 0, damaged: 0, hitDamage: 0, hitCritical: false, damageAngle: 0, damageDir: 0, killTime: 0, killVictim: '', killHeadshot: false, aim: false, sprinting: false, scoped: false, map: 'turbine',
+  abilityCooldown: 0, grenadeCooldown: 0, hit: 0, damaged: 0, hitDamage: 0, hitCritical: false, damageAngle: 0, damageDir: 0, killTime: 0, killVictim: '', killHeadshot: false, killLabel: '', aim: false, sprinting: false, scoped: false, map: 'turbine', heading: 0,
   position: { x: 0, z: 25 }, connected: false, room: '', players: [], feed: [], message: '', messageTime: 0,
   pointerLocked: false, shots: 0, hits: 0, respawn: 0, leader: 0, target: 15,
 };

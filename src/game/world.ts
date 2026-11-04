@@ -113,7 +113,7 @@ export class World {
     Object.assign(sun.shadow.camera, { left: -75, right: 75, top: 75, bottom: -75, near: 1, far: 180 });
     sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.055;
     sun.target.position.set(0, 0, -10); this.root.add(sun, sun.target);
-    const rim = new THREE.DirectionalLight('#adc5c7', 0.7); rim.position.set(30, 14, 40); this.root.add(rim);
+    const rim = new THREE.DirectionalLight(theme.glow, 0.7); rim.position.set(30, 14, 40); this.root.add(rim);
     this.addPlanet();
     this.addTerrain(stoneTexture);
     this.addMountains();
@@ -439,7 +439,8 @@ export class World {
     const positions: number[] = [], random = this.random;
     for (let i = 0; i < 260; i++) positions.push((random() - 0.5) * 120, 0.5 + random() * 23, (random() - 0.5) * 120);
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const dust = new THREE.Points(geometry, new THREE.PointsMaterial({ color: '#c3cadc', size: 0.27, map: radialTexture(), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const tint = this.map === 'ember' ? '#ffb27a' : this.map === 'verdant' ? '#b6ffd0' : '#c3cadc';
+    const dust = new THREE.Points(geometry, new THREE.PointsMaterial({ color: tint, size: this.map === 'ember' ? 0.21 : 0.27, map: radialTexture(), transparent: true, opacity: this.map === 'verdant' ? 0.62 : 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.root.add(dust); return dust;
   }
 
@@ -457,6 +458,8 @@ export class World {
     this.portalRings.forEach((r, i) => { r.rotation.z = t * (i ? -0.06 : 0.035); });
     this.sailfin.position.y = 3.6 + Math.sin(t * 1.4) * 0.17; this.sailfin.rotation.y = t * 0.2;
     this.dust.rotation.y = t * 0.005;
+    if (this.map === 'ember') this.dust.position.y = Math.sin(t * 0.35) * 1.8;
+    else if (this.map === 'verdant') this.dust.position.x = Math.sin(t * 0.2) * 2;
     this.engineer.rotation.z = Math.sin(t * 0.6) * 0.008;
   }
 }
