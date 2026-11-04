@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Gear, Lightning, Shield, Users, X, Play, ArrowLeft, Copy, Check, WifiHigh } from '@phosphor-icons/react';
 import { GameEngine } from './game/engine';
-import { CREWS, WEAPONS, EMPTY_HUD, DEFAULT_SETTINGS } from './game/data';
-import type { EngineerClass, WeaponId, Settings, HUDState } from './game/types';
+import { CREWS, WEAPONS, EMPTY_HUD, DEFAULT_SETTINGS, MAPS } from './game/data';
+import type { EngineerClass, WeaponId, Settings, HUDState, MapId } from './game/types';
 
 type Tab = 'play' | 'loadout' | 'guide';
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -19,6 +19,7 @@ export default function App() {
   const [privateRoom, setPrivateRoom] = useState(false);
   const [weapon, setWeapon] = useState<WeaponId>('auto');
   const [engineer, setEngineer] = useState<EngineerClass>('rigger');
+  const [mapId, setMapId] = useState<MapId>(() => { const saved = localStorage.getItem('nimbus-map'); return saved === 'ember' || saved === 'verdant' ? saved : 'turbine'; });
   const [settings, setSettings] = useState<Settings>(() => { try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem('nimbus-settings') || '{}') }; } catch { return DEFAULT_SETTINGS; } });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -32,12 +33,14 @@ export default function App() {
     } catch (e) { setError(`WebGL could not start. ${e instanceof Error ? e.message : ''}`); }
   }, []);
   useEffect(() => { engine.current?.configure(settings); localStorage.setItem('nimbus-settings', JSON.stringify(settings)); }, [settings]);
+  useEffect(() => { engine.current?.setMap(mapId); localStorage.setItem('nimbus-map', mapId); }, [mapId]);
   useEffect(() => { localStorage.setItem('nimbus-name', name); }, [name]);
-  const deploy = () => { if (!name.trim()) return; setError(''); engine.current?.start(name, privateRoom ? room.trim().toUpperCase() : '', engineer, weapon); };
+  const deploy = () => { if (!name.trim()) return; setError(''); engine.current?.start(name, privateRoom ? room.trim().toUpperCase() : '', engineer, weapon, mapId); };
   const createRoom = () => { const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), n => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[n % 32]).join('').slice(0, 6); setRoom(code); setPrivateRoom(true); };
   const copyRoom = async () => { await navigator.clipboard.writeText(hud.room); setCopied(true); setTimeout(() => setCopied(false), 1200); };
   const activeWeapon = WEAPONS.find(w => w.id === weapon)!;
   const activeCrew = CREWS.find(c => c.id === engineer)!;
+  const activeMap = MAPS.find(m => m.id === mapId) ?? MAPS[0];
   const sortedPlayers = [...hud.players].sort((a, b) => b.kills - a.kills);
   return <main className={`game-shell ${settings.reducedMotion ? 'reduce-motion' : ''}`}>
     <div className="world" ref={mount} />
@@ -55,20 +58,22 @@ export default function App() {
           <label>CALLSIGN<input value={name} maxLength={16} onChange={e => setName(e.target.value)} placeholder="Your callsign" /></label>
           {privateRoom && <label>ROOM CODE<input value={room} maxLength={10} onChange={e => setRoom(e.target.value.toUpperCase())} placeholder="ENTER CODE" /></label>}
           <div className="selected-kit"><button onClick={() => setTab('loadout')}><span style={{ background: activeCrew.color }} /><div><small>{activeCrew.role}</small><strong>{activeCrew.name}</strong></div><span>CHANGE</span></button><button onClick={() => setTab('loadout')}><Crosshair size={19} /><div><small>{activeWeapon.type}</small><strong>{activeWeapon.name}</strong></div><span>CHANGE</span></button></div>
-          <button className="deploy" disabled={!ready || !name.trim() || (privateRoom && !room.trim())} onClick={deploy}><Play size={20} weight="fill" /><span>{privateRoom ? 'JOIN PRIVATE ARENA' : 'QUICK PLAY'}<small>{ready ? 'CIRRUS REACH · 8 PLAYERS MAX' : 'PREPARING ARENA…'}</small></span></button>
+          <div className="map-picker"><div><small>ARENA</small><span>{activeMap.tagline}</span></div><div className="map-list">{MAPS.map(m => <button key={m.id} className={mapId === m.id ? 'selected' : ''} onClick={() => { setMapId(m.id); engine.current?.setMap(m.id); }}><span style={{ background: m.accent }} /><div><strong>{m.name}</strong><small>{m.district}</small></div></button>)}</div></div>
+          <button className="deploy" disabled={!ready || !name.trim() || (privateRoom && !room.trim())} onClick={deploy}><Play size={20} weight="fill" /><span>{privateRoom ? 'JOIN PRIVATE ARENA' : 'QUICK PLAY'}<small>{ready ? `${activeMap.name.toUpperCase()} · 8 PLAYERS MAX` : 'PREPARING ARENA…'}</small></span></button>
           <div className="room-actions"><button onClick={() => setPrivateRoom(v => !v)}>{privateRoom ? 'USE QUICK PLAY' : 'JOIN WITH CODE'}</button><button onClick={createRoom}>CREATE PRIVATE ROOM</button></div>
           <p className="network-note"><span /> Live server combat · Practice frames fill empty slots</p>
         </div>
       </div>}
       {tab === 'loadout' && <div className="loadout-page"><div className="section-title"><span>FIELD KIT</span><h2>CHOOSE YOUR EDGE.</h2><p>Every weapon changes your range, rhythm, and approach.</p></div><div className="kit-grid"><section><h3>01 / COMBAT FRAME</h3><div className="crew-list">{CREWS.map(c => <button key={c.id} className={engineer === c.id ? 'selected' : ''} onClick={() => { setEngineer(c.id); engine.current?.setEngineer(c.id); }}><span className="crew-swatch" style={{ background: c.color }} /><div><strong>{c.name}</strong><small>{c.role} · {c.health} HP</small><p>{c.abilityDescription}</p></div><b>Q · {c.ability}</b></button>)}</div></section><section><h3>02 / WEAPON RACK <span>8 AVAILABLE</span></h3><div className="weapon-list">{WEAPONS.map((w, i) => <button key={w.id} className={weapon === w.id ? 'selected' : ''} onClick={() => { setWeapon(w.id); engine.current?.setWeapon(w.id); }}><kbd>{i + 1}</kbd><div><strong>{w.name}</strong><small>{w.type}</small></div><span>{w.damage}{w.pellets > 1 ? `×${w.pellets}` : ''} DMG</span><span>{w.magazine} MAG</span></button>)}</div></section></div><button className="back-action" onClick={() => setTab('play')}><ArrowLeft size={17} /> READY FOR DEPLOYMENT</button></div>}
-      {tab === 'guide' && <div className="guide-page"><div className="section-title"><span>FIELD MANUAL</span><h2>MOVE FAST. HIT FIRST.</h2></div><div className="guide-grid"><article><h3>CORE CONTROLS</h3>{[['W A S D','Move'],['MOUSE','Look'],['LEFT CLICK','Fire'],['RIGHT CLICK','Aim'],['SHIFT','Sprint'],['SPACE','Jump'],['R','Reload'],['1 — 8','Switch weapon'],['Q','Class ability'],['E','Wind grenade'],['P','Match menu']].map(([k,v]) => <div className="key-row" key={k}><span>{v}</span><kbd>{k}</kbd></div>)}</article><article><h3>COMBAT RULES</h3><p>First to 15 eliminations wins, or the highest score when the five-minute turbine cycle ends.</p><p>Shields regenerate after avoiding damage. Headshots deal 1.65× damage. Shotguns fire eight pellets; snipers reward a steady scoped shot.</p><p>Q triggers your combat-frame ability. E detonates a wind grenade at your aim point. Empty rooms contain live practice frames; human players can join the same arena at any time.</p><h3>PLAY WITH FRIENDS</h3><p>Create a private room, share its six-character code, and deploy with the same code. Quick Play joins the shared SKY-01 arena.</p></article></div><button className="back-action" onClick={() => setTab('play')}><ArrowLeft size={17} /> BACK TO DEPLOYMENT</button></div>}
-      <footer className="lobby-footer"><span>CIRRUS REACH / TURBINE DISTRICT</span><span>BUILD 2.0 · MULTIPLAYER</span></footer>
+      {tab === 'guide' && <div className="guide-page"><div className="section-title"><span>FIELD MANUAL</span><h2>MOVE FAST. HIT FIRST.</h2></div><div className="guide-grid"><article><h3>CORE CONTROLS</h3>{[['W A S D','Move'],['MOUSE','Look'],['LEFT CLICK','Fire'],['RIGHT CLICK','Aim / Scope'],['SHIFT','Sprint'],['SPACE','Jump'],['R','Reload'],['1 — 8','Switch weapon'],['Q','Class ability'],['E','Wind grenade'],['P','Match menu']].map(([k,v]) => <div className="key-row" key={k}><span>{v}</span><kbd>{k}</kbd></div>)}</article><article><h3>COMBAT RULES</h3><p>First to 15 eliminations wins, or the highest score when the five-minute cycle ends. Pick Turbine District, Cinder Foundry, or Canopy Reach before deployment; the room keeps its arena.</p><p>Shields regenerate after avoiding damage. Headshots deal 1.65× damage. Shotguns fire eight pellets; snipers reward a steady scoped shot.</p><p>Q triggers your combat-frame ability. E detonates a wind grenade at your aim point. Empty rooms contain live practice frames; human players can join the same arena at any time.</p><h3>PLAY WITH FRIENDS</h3><p>Create a private room, share its six-character code, and deploy with the same code. Quick Play joins the shared SKY-01 arena.</p></article></div><button className="back-action" onClick={() => setTab('play')}><ArrowLeft size={17} /> BACK TO DEPLOYMENT</button></div>}
+      <footer className="lobby-footer"><span>{activeMap.district} / {activeMap.name.toUpperCase()}</span><span>BUILD 2.0 · MULTIPLAYER</span></footer>
     </section>}
     {(hud.phase === 'playing' || hud.phase === 'paused') && <section className="hud">
-      <div className="match-top"><div><small>SKY CLASH</small><strong>{hud.room}<button onClick={copyRoom} aria-label="Copy room code">{copied ? <Check size={14} /> : <Copy size={14} />}</button></strong></div><div className="match-score"><span>YOU <b>{hud.kills}</b></span><strong>{time(hud.remaining)}</strong><span><b>{hud.leader}</b> LEADER</span></div><div className="online-count"><span className={hud.connected ? 'online' : ''} />{hud.connected ? 'LIVE' : 'OFFLINE'} · {hud.players.length} COMBATANTS</div></div>
+      <div className="match-top"><div><small>SKY CLASH · {MAPS.find(m => m.id === hud.map)?.district ?? 'CIRRUS REACH'}</small><strong>{hud.room}<button onClick={copyRoom} aria-label="Copy room code">{copied ? <Check size={14} /> : <Copy size={14} />}</button></strong></div><div className="match-score"><span>YOU <b>{hud.kills}</b></span><strong>{time(hud.remaining)}</strong><span><b>{hud.leader}</b> LEADER</span></div><div className="online-count"><span className={hud.connected ? 'online' : ''} />{hud.connected ? 'LIVE' : 'OFFLINE'} · {hud.players.length} COMBATANTS</div></div>
       <div className="killfeed">{hud.feed.slice(0,4).map(f => <div key={f.id}><b>{f.killer}</b><span>{f.headshot ? 'PRECISION' : WEAPONS.find(w => w.id === f.weapon)?.name}</span><b>{f.victim}</b></div>)}</div>
       <div className="scoreboard">{sortedPlayers.slice(0,5).map((p,i) => <div key={p.id}><span>{i+1}</span><b>{p.name}</b><strong>{p.kills}</strong><small>{p.deaths}</small></div>)}</div>
-      <div className={`crosshair ${hud.hit > 0 ? 'hit' : ''}`}><i /><i /><i /><i /><b /></div>
+      {hud.scoped && <div className="scope"><div className="scope-lens" /><div className="scope-reticle"><i /><i /><b /><span /><span /><span /><span /></div><div className="scope-info"><span>{engine.current?.weapon.name}</span><b>{engine.current?.weapon.id === 'sniper' ? '6.0×' : '3.0×'}</b></div><div className="scope-scan" /></div>}
+      {!hud.scoped && <div className={`crosshair ${hud.hit > 0 ? 'hit' : ''}`}><i /><i /><i /><i /><b /></div>}
       {hud.hit > 0 && <div key={hud.hits} className={`hitmarker ${hud.hitCritical ? 'critical' : ''}`} style={{ opacity: Math.min(1, hud.hit * 1.6) }}><i /><i /><i /><i />{hud.hitDamage > 0 && <b>{Math.round(hud.hitDamage)}</b>}</div>}
       {hud.damageDir > 0 && <div className="damage-dir" style={{ opacity: Math.min(1, hud.damageDir), transform: `translate(-50%,-50%) rotate(${hud.damageAngle}deg)` }}><i /></div>}
       {hud.killTime > 0 && <div key={`${hud.killVictim}-${hud.kills}`} className={`kill-confirm${hud.killHeadshot ? ' headshot' : ''}`} style={{ opacity: Math.min(1, hud.killTime) }}><small>{hud.killHeadshot ? 'PRECISION ELIMINATION' : 'ELIMINATION'}</small><strong>{hud.killVictim}</strong></div>}

@@ -1,6 +1,7 @@
 export type EngineerClass = 'rigger' | 'aerostat' | 'mistwright';
 export type WeaponId = 'auto' | 'handcannon' | 'scout' | 'spectre' | 'shotgun' | 'sniper' | 'burst' | 'lmg';
 export type GamePhase = 'menu' | 'playing' | 'paused' | 'ended';
+export type MapId = 'turbine' | 'ember' | 'verdant';
 
 export interface EngineerSpec {
   id: EngineerClass; name: string; role: string; color: string; ability: string;
@@ -24,7 +25,7 @@ export interface HUDState {
   magazine: number; reloading: boolean; reloadProgress: number; kills: number; deaths: number;
   remaining: number; abilityCooldown: number; grenadeCooldown: number; hit: number; damaged: number; hitDamage: number; hitCritical: boolean;
   damageAngle: number; damageDir: number; killTime: number; killVictim: string; killHeadshot: boolean;
-  aim: boolean; sprinting: boolean; position: { x: number; z: number }; connected: boolean;
+  aim: boolean; sprinting: boolean; scoped: boolean; map: MapId; position: { x: number; z: number }; connected: boolean;
   room: string; players: NetPlayer[]; feed: KillEvent[]; message: string; messageTime: number;
   pointerLocked: boolean; shots: number; hits: number; respawn: number; leader: number; target: number;
 }

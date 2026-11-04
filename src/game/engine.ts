@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { World } from './world';
 import { createEngineer, createWeapon, part } from './models';
 import { GameAudio } from './audio';
+import { addIdentity } from './identity';
 import { CREWS, WEAPONS, EMPTY_HUD } from './data';
 import { clamp, damp, terrainHeight, disposeObject, seededRandom } from './math';
-import type { EngineCallbacks, HUDState, EngineerClass, WeaponId, Settings, Snapshot, NetPlayer } from './types';
+import type { EngineCallbacks, HUDState, EngineerClass, WeaponId, Settings, Snapshot, NetPlayer, MapId } from './types';
 
 type Remote = { mesh: THREE.Group; label: THREE.Sprite; target: THREE.Vector3; last: NetPlayer };
 type Trace = { line: THREE.Line; life: number };
@@ -13,7 +14,7 @@ export class GameEngine {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(68, 1, .05, 700);
-  readonly world: World;
+  world: World;
   readonly audio = new GameAudio();
   readonly canvas: HTMLCanvasElement;
   hud: HUDState = structuredClone(EMPTY_HUD);
@@ -37,6 +38,7 @@ export class GameEngine {
   private raf = 0;
   private previous = 0;
   private worldTime = 0;
+  private map: MapId = 'turbine';
   private hudClock = 0;
   private netClock = 0;
   private yaw = 0;
@@ -73,7 +75,8 @@ export class GameEngine {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.canvas = this.renderer.domElement; this.canvas.setAttribute('aria-label', 'Nimbus Rivals multiplayer arena'); container.appendChild(this.canvas);
     this.scene.add(this.camera); this.camera.position.set(28, 10, 46); this.camera.lookAt(0, 8, -30);
-    this.world = new World(this.scene, this.softwareGPU ? 'low' : settings.quality);
+    this.world = new World(this.scene, this.softwareGPU ? 'low' : settings.quality, this.map);
+    addIdentity(this.scene);
     this.gun = createWeapon('auto'); this.weaponGroup.add(this.gun); this.weaponGroup.position.set(.34, -.31, -.85); this.weaponGroup.scale.setScalar(.72); this.weaponGroup.visible = false; this.camera.add(this.weaponGroup);
     const glove = new THREE.MeshStandardMaterial({ color: '#24383d', roughness: .75 });
     part(this.weaponGroup, glove, [.17, .18, .42], [.08, -.23, .4], [-.55, 0, 0], .04);
@@ -103,23 +106,33 @@ export class GameEngine {
     this.listen(window, 'blur', (() => { this.keys.clear(); this.firing = false; this.aiming = false; }) as EventListener);
   }
   requestPointerLock() { if (this.hud.phase === 'playing' && !matchMedia('(pointer:coarse)').matches) void this.canvas.requestPointerLock?.().catch(() => {}); }
-  private look(x: number, y: number) { const s = .0021 * this.settings.sensitivity * (this.aiming ? .6 : 1); this.yaw -= x * s; this.pitch = clamp(this.pitch - y * s * (this.settings.invertY ? -1 : 1), -1.45, 1.45); }
+  private look(x: number, y: number) { const scope = this.aiming && (this.weapon.id === 'sniper' || this.weapon.id === 'scout'); const s = .0021 * this.settings.sensitivity * (scope ? (this.weapon.id === 'sniper' ? .22 : .32) : this.aiming ? .6 : 1); this.yaw -= x * s; this.pitch = clamp(this.pitch - y * s * (this.settings.invertY ? -1 : 1), -1.45, 1.45); }
   configure(settings: Settings) { this.settings = { ...settings }; this.audio.setVolume(settings.volume); this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.softwareGPU ? .7 : settings.quality === 'high' ? 1.4 : 1)); }
   setEngineer(id: EngineerClass) { this.engineer = CREWS.find(c => c.id === id)!; this.world.setEngineer(id); }
   setWeapon(id: WeaponId) { if (this.weapon.id === id) return; this.weapon = WEAPONS.find(w => w.id === id)!; this.weaponGroup.remove(this.gun); disposeObject(this.gun); this.gun = createWeapon(id); this.weaponGroup.add(this.gun); this.hud.ammo = this.hud.magazine = this.weapon.magazine; this.hud.reloading = false; this.fireTimer = .18; }
-  start(name: string, room: string, engineer: EngineerClass, weapon: WeaponId) {
-    this.returnToMenu(); this.needsSpawn = true; this.serverAlive = false; this.setEngineer(engineer); this.weapon = WEAPONS[0]; this.setWeapon(weapon);
-    this.hud = structuredClone(EMPTY_HUD); this.hud.phase = 'playing'; this.hud.health = this.hud.maxHealth = this.engineer.health; this.hud.ammo = this.hud.magazine = this.weapon.magazine; this.hud.room = room || 'SKY-01'; this.hud.message = 'CONNECTING TO CIRRUS REACH'; this.hud.messageTime = 5;
+  setMap(map: MapId) {
+    if (this.map === map) return;
+    this.map = map;
+    this.scene.remove(this.world.root); disposeObject(this.world.root);
+    this.world = new World(this.scene, this.softwareGPU ? 'low' : this.settings.quality, map);
+    const showHelper = this.hud.phase === 'menu';
+    this.world.engineer.visible = showHelper; this.world.sailfin.visible = showHelper;
+    if (showHelper) this.world.setEngineer(this.engineer.id);
+    this.hud.map = map; this.publish();
+  }
+  start(name: string, room: string, engineer: EngineerClass, weapon: WeaponId, map: MapId = 'turbine') {
+    this.returnToMenu(); this.setMap(map); this.needsSpawn = true; this.serverAlive = false; this.setEngineer(engineer); this.weapon = WEAPONS[0]; this.setWeapon(weapon);
+    this.hud = structuredClone(EMPTY_HUD); this.hud.map = map; this.hud.phase = 'playing'; this.hud.health = this.hud.maxHealth = this.engineer.health; this.hud.ammo = this.hud.magazine = this.weapon.magazine; this.hud.room = room || 'SKY-01'; this.hud.message = 'CONNECTING TO CIRRUS REACH'; this.hud.messageTime = 5;
     this.world.engineer.visible = false; this.world.sailfin.visible = false; this.weaponGroup.visible = true; this.camera.position.set(0, terrainHeight(0, 27) + 1.75, 27); this.yaw = 0; this.pitch = 0;
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'; const configured = import.meta.env.VITE_WS_URL as string | undefined; this.ws = new WebSocket(configured || `${protocol}//${location.host}/ws`);
-    this.ws.onopen = () => { this.hud.connected = true; this.ws?.send(JSON.stringify({ type: 'join', name, room, engineer, weapon })); this.announce('FREE-FOR-ALL', 'First to 15 eliminations. Wind frames fill open slots.', 4); };
+    this.ws.onopen = () => { this.hud.connected = true; this.ws?.send(JSON.stringify({ type: 'join', name, room, engineer, weapon, map })); this.announce('FREE-FOR-ALL', 'First to 15 eliminations. Wind frames fill open slots.', 4); };
     this.ws.onmessage = e => this.onMessage(JSON.parse(e.data));
     this.ws.onerror = () => this.callbacks.onError('Could not reach the arena server. Check your connection and retry.');
     this.ws.onclose = () => { this.hud.connected = false; if (this.hud.phase === 'playing') this.announce('CONNECTION LOST', 'Return to the lobby and reconnect.', 8); };
     this.audio.start(); this.publish(); this.requestPointerLock();
   }
-  private onMessage(msg: { type: string; id?: string; room?: string; damage?: number; headshot?: boolean; killer?: string; message?: string; from?: number[] } & Partial<Snapshot>) {
-    if (msg.type === 'joined') { this.playerId = msg.id!; this.hud.room = msg.room!; }
+  private onMessage(msg: { type: string; id?: string; room?: string; map?: MapId; damage?: number; headshot?: boolean; killer?: string; message?: string; from?: number[] } & Partial<Snapshot>) {
+    if (msg.type === 'joined') { this.playerId = msg.id!; this.hud.room = msg.room!; if (msg.map) this.setMap(msg.map); }
     if (msg.type === 'hit') { this.hud.hit = 1; this.hud.hits++; this.hud.hitDamage = msg.damage ?? 0; this.hud.hitCritical = !!msg.headshot; this.audio.hit(!!msg.headshot); }
     if (msg.type === 'damaged') this.damageSource(msg.from);
     if (msg.type === 'death') { this.hud.deaths++; this.hud.health = 0; this.hud.shield = 0; this.hud.damaged = 1; this.shake = .85; this.hud.respawn = 3; this.firing = false; this.announce('ELIMINATED', `${msg.killer} took the duel. Redeploying…`, 3); }
@@ -150,7 +163,7 @@ export class GameEngine {
       remote.target.set(p.x, p.y - 1.75, p.z); remote.last = p; remote.mesh.rotation.y = p.yaw + Math.PI; remote.label.position.set(p.x, p.y + .65, p.z);
     }
     for (const feed of s.feed) if (feed.id > this.feedSeen) { this.feedSeen = feed.id; if (feed.killer === me?.name) { this.hud.killTime = 1.8; this.hud.killVictim = feed.victim; this.hud.killHeadshot = feed.headshot; } if (feed.killer !== 'VEX-7' && feed.killer !== 'KITE' && feed.killer !== 'ROOK') this.audio.kill(); }
-    if ((s.remaining <= 0 || s.leader >= s.target) && this.hud.phase === 'playing') { this.hud.phase = 'ended'; this.weaponGroup.visible = false; if (document.pointerLockElement === this.canvas) document.exitPointerLock(); this.audio.win(); }
+    if ((s.remaining <= 0 || s.leader >= s.target) && this.hud.phase === 'playing') { this.hud.phase = 'ended'; this.hud.scoped = false; this.weaponGroup.visible = false; if (document.pointerLockElement === this.canvas) document.exitPointerLock(); this.audio.win(); }
   }
   private damageSource(from?: number[]) {
     if (!from || from.length !== 2) return;
@@ -171,6 +184,8 @@ export class GameEngine {
   private announce(message: string, sub = '', time = 3) { this.hud.message = sub ? `${message}|${sub}` : message; this.hud.messageTime = time; }
   private loop = (now: number) => { if (this.disposed) return; const dt = Math.min(this.previous ? (now - this.previous) / 1000 : .016, .05); this.previous = now; this.worldTime += dt; this.world.update(this.worldTime, this.settings.reducedMotion); if (this.hud.phase === 'playing') this.update(dt); else if (this.hud.phase === 'menu') { this.camera.position.x = 28 + Math.sin(this.worldTime * .08) * 2; this.camera.lookAt(0, 8, -30); } this.updateRemotes(dt); this.updateEffects(dt); this.renderer.render(this.scene, this.camera); this.hudClock += dt; if (this.hudClock > .08) { this.hudClock = 0; this.publish(); } this.raf = requestAnimationFrame(this.loop); };
   private update(dt: number) {
+    const scoped = this.aiming && !this.hud.reloading && this.hud.respawn <= 0 && (this.weapon.id === 'sniper' || this.weapon.id === 'scout');
+    this.hud.scoped = scoped; this.weaponGroup.visible = !scoped;
     this.fireTimer = Math.max(0, this.fireTimer - dt); this.invincible = Math.max(0, this.invincible - dt); this.dashTime = Math.max(0, this.dashTime - dt); this.hud.abilityCooldown = Math.max(0, this.hud.abilityCooldown - dt); this.hud.grenadeCooldown = Math.max(0, this.hud.grenadeCooldown - dt); this.hud.hit = Math.max(0, this.hud.hit - dt * 5); this.hud.damaged = Math.max(0, this.hud.damaged - dt * 1.8); this.shake = Math.max(0, this.shake - dt * 2.4); this.hud.damageDir = Math.max(0, this.hud.damageDir - dt * 1.6); this.hud.killTime = Math.max(0, this.hud.killTime - dt); this.hud.messageTime = Math.max(0, this.hud.messageTime - dt);
     if (this.hud.reloading) { this.reloadTimer -= dt; this.hud.reloadProgress = 1 - this.reloadTimer / this.weapon.reload; if (this.reloadTimer <= 0) { this.hud.reloading = false; this.hud.ammo = this.weapon.magazine; this.audio.tone(480, .08, 'square', .04, 650); } }
     if (this.hud.respawn <= 0 && this.hud.health > 0) this.move(dt);
@@ -178,7 +193,8 @@ export class GameEngine {
     this.recoil = damp(this.recoil, 0, 12, dt); const reload = this.hud.reloading ? Math.sin(this.hud.reloadProgress * Math.PI) : 0;
     const bob = this.grounded ? Math.min(1, Math.hypot(this.velocity.x, this.velocity.z) / (this.engineer.speed * 1.45)) : 0;
     this.weaponGroup.position.x = damp(this.weaponGroup.position.x, this.aiming ? .01 : .34, 12, dt) + Math.cos(this.walkTime) * .016 * bob; this.weaponGroup.position.y = damp(this.weaponGroup.position.y, (this.aiming ? -.25 : -.31) - reload * .3, 12, dt) + Math.sin(this.walkTime * 2) * .012 * bob; this.weaponGroup.position.z = -.85 + this.recoil * .08; this.weaponGroup.rotation.x = this.recoil * .08 - reload * .4; this.weaponGroup.rotation.z = damp(this.weaponGroup.rotation.z, Math.sin(this.walkTime) * .02 * bob, 12, dt);
-    this.camera.fov = damp(this.camera.fov, this.aiming ? (this.weapon.id === 'sniper' ? 35 : 58) : this.hud.sprinting ? 80 : 74, 12, dt); this.camera.updateProjectionMatrix(); this.muzzle.visible = this.fireTimer > this.weapon.rate - .035;
+    const targetFov = scoped ? (this.weapon.id === 'sniper' ? 18 : 30) : this.aiming ? (this.weapon.id === 'sniper' ? 35 : 58) : this.hud.sprinting ? 80 : 74;
+    this.camera.fov = damp(this.camera.fov, targetFov, scoped ? 18 : 12, dt); this.camera.updateProjectionMatrix(); this.muzzle.visible = this.fireTimer > this.weapon.rate - .035;
     const shake = this.shake * this.shake; this.camera.rotation.set(this.pitch - this.recoil * .006 + (Math.random() - .5) * shake * .085, this.yaw + (Math.random() - .5) * shake * .11, (Math.random() - .5) * shake * .045, 'YXZ'); this.hud.aim = this.aiming; this.hud.position = { x: this.camera.position.x, z: this.camera.position.z };
     this.netClock += dt; if (this.netClock > .066 && this.ws?.readyState === WebSocket.OPEN) { this.netClock = 0; this.ws.send(JSON.stringify({ type: 'state', position: this.camera.position.toArray(), yaw: this.yaw, weapon: this.weapon.id })); }
   }

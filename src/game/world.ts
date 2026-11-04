@@ -1,10 +1,10 @@
-import { addIdentity } from './identity';
 import { fieldTexture } from './fieldTexture';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { seededRandom, terrainHeight } from './math';
 import { createEngineer, createSailHelper, part } from './models';
-import type { EngineerClass } from './types';
+import { MAPS, type MapSpec } from './data';
+import type { EngineerClass, MapId } from './types';
 
 export interface Collider { x: number; z: number; radius: number; height: number; }
 
@@ -14,16 +14,16 @@ float noise(vec2 p) { vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(m
 float fbm(vec2 p) { float v=0.; float a=.5; for(int i=0;i<5;i++){v+=a*noise(p);p=p*2.02+vec2(13.1,7.7);a*=.5;}return v; }
 `;
 
-function makeSky() {
+function makeSky(theme: MapSpec) {
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
-    uniforms: { uTime: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uLow: { value: new THREE.Color(theme.skyLow) }, uHigh: { value: new THREE.Color(theme.skyHigh) }, uCloud: { value: new THREE.Color(theme.cloud) } },
     vertexShader: `varying vec3 vWorld; void main(){vec4 w=modelMatrix*vec4(position,1.);vWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
     fragmentShader: `${noiseGLSL}
-      uniform float uTime; varying vec3 vWorld;
+      uniform float uTime; uniform vec3 uLow; uniform vec3 uHigh; uniform vec3 uCloud; varying vec3 vWorld;
       void main(){
         vec3 d=normalize(vWorld-cameraPosition);float h=max(d.y,0.);
-        vec3 low=vec3(.75,.77,.64), high=vec3(.14,.27,.28);
+        vec3 low=uLow, high=uHigh;
         vec3 sky=mix(low,high,pow(h,.53));
         vec3 sunDir=normalize(vec3(-.45,.31,-.72));float sun=max(dot(d,sunDir),0.);
         sky+=vec3(1.,.82,.5)*pow(sun,11.)*.32;
@@ -35,7 +35,7 @@ function makeSky() {
         float n=fbm(uv+vec2(uTime*.0018,0.));
         #endif
         float cloud=smoothstep(.46,.76,n)*smoothstep(-.03,.22,d.y);
-        sky=mix(sky,vec3(.82,.82,.72),cloud*.7);
+        sky=mix(sky,uCloud,cloud*.7);
         sky=mix(sky,vec3(.6,.68,.62),1.-smoothstep(-.18,.08,d.y));
         gl_FragColor=vec4(sky,1.);
       }`,
@@ -87,23 +87,27 @@ export class World {
   private gold: THREE.MeshStandardMaterial;
   private glow: THREE.MeshBasicMaterial;
   private portalRings: THREE.Object3D[] = [];
+  private theme: MapSpec;
+  readonly map: MapId;
 
-  constructor(scene: THREE.Scene, quality: 'high' | 'low') {
+  constructor(scene: THREE.Scene, quality: 'high' | 'low', map: MapId = 'turbine') {
     this.assetsReady = Promise.resolve();
+    this.map = map;
+    this.theme = MAPS.find(m => m.id === map) ?? MAPS[0];
+    const theme = this.theme;
     scene.add(this.root);
-    addIdentity(scene);
-    scene.fog = new THREE.FogExp2('#9298a7', 0.0057);
-    const stoneTexture = fieldTexture('turbine ceramic'); stoneTexture.colorSpace = THREE.SRGBColorSpace;
+    scene.fog = new THREE.FogExp2(theme.fog, theme.fogDensity);
+    const stoneTexture = fieldTexture(`${theme.name} ceramic`); stoneTexture.colorSpace = THREE.SRGBColorSpace;
     stoneTexture.wrapS = stoneTexture.wrapT = THREE.RepeatWrapping; stoneTexture.repeat.set(1.3, 1.3); stoneTexture.anisotropy = 4;
-    this.stone = new THREE.MeshStandardMaterial({ color: '#646b7c', map: stoneTexture, roughness: 0.97 });
-    this.darkStone = new THREE.MeshStandardMaterial({ color: '#43464e', map: stoneTexture, roughness: 0.91 });
-    this.paleStone = new THREE.MeshStandardMaterial({ color: '#a0a6b5', map: stoneTexture, roughness: 0.84 });
-    this.moss = new THREE.MeshStandardMaterial({ color: '#3f4f79', map: stoneTexture, roughness: 1 });
-    this.gold = new THREE.MeshStandardMaterial({ color: '#6577a6', metalness: 0.72, roughness: 0.39, map: stoneTexture });
-    this.glow = new THREE.MeshBasicMaterial({ color: '#acb5ce' });
-    const { sky, material } = makeSky(); this.skyMaterial = material; this.root.add(sky);
-    const hemi = new THREE.HemisphereLight('#d0d6e4', '#30384b', 2.2); this.root.add(hemi);
-    const sun = new THREE.DirectionalLight('#ced4e2', 4.3);
+    this.stone = new THREE.MeshStandardMaterial({ color: theme.stone, map: stoneTexture, roughness: 0.97 });
+    this.darkStone = new THREE.MeshStandardMaterial({ color: theme.darkStone, map: stoneTexture, roughness: 0.91 });
+    this.paleStone = new THREE.MeshStandardMaterial({ color: theme.paleStone, map: stoneTexture, roughness: 0.84 });
+    this.moss = new THREE.MeshStandardMaterial({ color: theme.moss, map: stoneTexture, roughness: 1 });
+    this.gold = new THREE.MeshStandardMaterial({ color: theme.gold, metalness: 0.72, roughness: 0.39, map: stoneTexture });
+    this.glow = new THREE.MeshBasicMaterial({ color: theme.glow });
+    const { sky, material } = makeSky(theme); this.skyMaterial = material; this.root.add(sky);
+    const hemi = new THREE.HemisphereLight(theme.skyLow, theme.darkStone, 2.2); this.root.add(hemi);
+    const sun = new THREE.DirectionalLight(theme.cloud, 4.3);
     sun.position.set(-45, 64, -35); sun.castShadow = true;
     sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024);
     Object.assign(sun.shadow.camera, { left: -75, right: 75, top: 75, bottom: -75, near: 1, far: 180 });
@@ -166,7 +170,7 @@ export class World {
 
   private addPlanet() {
     const texture = fieldTexture('weather balloon'); texture.colorSpace = THREE.SRGBColorSpace;
-    const planet = new THREE.Mesh(new THREE.SphereGeometry(30, 40, 24), new THREE.MeshStandardMaterial({ map: texture, color: '#b2bace', roughness: 1 }));
+    const planet = new THREE.Mesh(new THREE.SphereGeometry(30, 40, 24), new THREE.MeshStandardMaterial({ map: texture, color: this.theme.paleStone, roughness: 1 }));
     planet.scale.set(1.7,.55,.65); planet.position.set(59, 80, -204); planet.rotation.set(0.15, -0.3, -0.2); this.root.add(planet);
     for(const dx of [-28,28]){
       const tether=new THREE.Mesh(new THREE.CylinderGeometry(.15,.15,24,8),this.darkStone);tether.position.set(59+dx,55,-204);this.root.add(tether);
@@ -178,7 +182,7 @@ export class World {
   private addTerrain(_texture: THREE.Texture) {
     const geometry = new THREE.PlaneGeometry(360, 320, 160, 144); geometry.rotateX(-Math.PI / 2);
     const positions = geometry.attributes.position, colors: number[] = [];
-    const base = new THREE.Color('#48577d'), light = new THREE.Color('#7885a6'), path = new THREE.Color('#8c97b5');
+    const base = new THREE.Color(this.theme.terrainBase), light = new THREE.Color(this.theme.terrainLight), path = new THREE.Color(this.theme.terrainPath);
     for (let i = 0; i < positions.count; i++) {
       const x = positions.getX(i), z = positions.getZ(i) - 70;
       positions.setZ(i, z); positions.setY(i, terrainHeight(x, z));
@@ -190,7 +194,7 @@ export class World {
     }
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals();
     const groundMap = fieldTexture('storm pavers'); groundMap.colorSpace = THREE.SRGBColorSpace; groundMap.wrapS = groundMap.wrapT = THREE.RepeatWrapping; groundMap.repeat.set(78, 66); groundMap.anisotropy = 4;
-    const material = new THREE.MeshStandardMaterial({ map: groundMap, vertexColors: true, roughness: 1, color: '#a1acc8' });
+    const material = new THREE.MeshStandardMaterial({ map: groundMap, vertexColors: true, roughness: 1, color: this.theme.terrainTint });
     const terrain = new THREE.Mesh(geometry, material); terrain.receiveShadow = true; this.root.add(terrain);
     // Thin stone pavers trace a navigable route through the grass.
     for (let i = 0; i < 28; i++) {
@@ -205,7 +209,7 @@ export class World {
     for (let row = 0; row < 3; row++) {
       const geometry = new THREE.PlaneGeometry(850, 180, 150, 24); geometry.rotateX(-Math.PI / 2);
       const p = geometry.attributes.position, colors: number[] = [];
-      const col = new THREE.Color(row === 0 ? '#545967' : row === 1 ? '#7a8091' : '#a0a6b4');
+      const col = new THREE.Color(this.theme.mountains[row]);
       for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), depth = (p.getZ(i) + 90) / 180;
         const jagged = Math.abs(Math.sin(x * 0.023 + row * 8)) * 37 + Math.abs(Math.sin(x * 0.065)) * 14 + Math.abs(Math.sin(x * 0.31)) * 3;
@@ -240,23 +244,34 @@ export class World {
   }
 
   private addArchitecture() {
-    this.tower(-22, -36, 26, 4.8);
-    this.tower(24, -43, 34, 5.3);
-    this.tower(-34, -4, 19, 4.7, true);
-    this.tower(37, 5, 24, 5, true);
-    this.tower(-17, -11, 7.4, 2.9, true);
-    this.tower(19, -8, 5.5, 2.8, true);
-    this.tower(-45, -95, 42, 6);
-    this.tower(43, -100, 48, 7.5);
-    this.tower(80, -78, 36, 6);
-    this.tower(-86, -110, 29, 6, true);
+    const map = this.map;
+    const towers: [number, number, number, number, boolean?][] = map === 'ember' ? [
+      [-20, -34, 30, 5.2], [22, -44, 38, 5.6], [-36, -6, 22, 5, true], [35, 4, 20, 4.8, true],
+      [-16, -12, 8, 3, true], [18, -10, 6, 3, true], [-48, -92, 45, 6.5], [45, -98, 40, 6.8],
+      [78, -76, 34, 6], [-84, -108, 30, 6, true],
+    ] : map === 'verdant' ? [
+      [-24, -38, 24, 4.6], [26, -42, 30, 4.9], [-30, -2, 18, 4.4, true], [33, 8, 22, 4.6, true],
+      [-16, -10, 7, 2.8, true], [18, -8, 5.5, 2.7, true], [-44, -96, 38, 6], [46, -102, 44, 6.4],
+      [82, -80, 32, 5.6], [-88, -112, 27, 5.8, true],
+    ] : [
+      [-22, -36, 26, 4.8], [24, -43, 34, 5.3], [-34, -4, 19, 4.7, true], [37, 5, 24, 5, true],
+      [-17, -11, 7.4, 2.9, true], [19, -8, 5.5, 2.8, true], [-45, -95, 42, 6], [43, -100, 48, 7.5],
+      [80, -78, 36, 6], [-86, -110, 29, 6, true],
+    ];
+    for (const [x, z, height, width, broken] of towers) this.tower(x, z, height, width, broken);
     part(this.root, this.darkStone, [49, 3.1, 5.8], [0, 28.4, -42]);
     part(this.root, this.paleStone, [50, 0.75, 6.2], [0, 30.3, -42]);
     for (let i = 0; i < 11; i++) part(this.root, this.gold, [0.1, 1.8, 6], [-21 + i * 4.2, 28.6, -42]);
-    const brokenBridge = part(this.root, this.stone, [19, 2, 4.7], [-32, 15, -5], [0, 0.15, -0.14]);
+    const bridgeX = map === 'verdant' ? -28 : -32;
+    const brokenBridge = part(this.root, this.stone, [19, 2, 4.7], [bridgeX, 15, -5], [0, 0.15, -0.14]);
     brokenBridge.castShadow = true;
     // Arena cover is deliberately low enough to read and navigate while sprinting.
-    [[-10, 15], [12, 7], [-24, -24], [26, -22], [7, -25], [-8, -3], [30, 20]].forEach(([x, z], i) => {
+    const cover: [number, number][] = map === 'ember'
+      ? [[-10, 15], [11, 7], [-24, -24], [26, -22], [7, -25], [-8, -3], [30, 20], [-19, 9], [19, 18], [-29, -7], [29, -6], [0, -18]]
+      : map === 'verdant'
+        ? [[-10, 15], [12, 7], [-24, -24], [26, -22], [7, -25], [-8, -3], [30, 20], [-20, -6], [22, -12]]
+        : [[-10, 15], [12, 7], [-24, -24], [26, -22], [7, -25], [-8, -3], [30, 20]];
+    cover.forEach(([x, z], i) => {
       const h = i % 3 === 0 ? 2.1 : 1.6;
       part(this.root, this.darkStone, [4, h, 2.5], [x, terrainHeight(x, z) + h / 2, z], [0, i * 0.23, 0]);
       part(this.root, this.stone, [4.2, 0.22, 2.7], [x, terrainHeight(x, z) + h, z], [0, i * 0.23, 0]);
@@ -269,6 +284,29 @@ export class World {
         part(this.root, this.gold, [0.35, 1.1, 0.35], [side * 6.3, terrainHeight(side * 6.3, z) + 0.5, z]);
         part(this.root, this.glow, [0.18, 0.2, 0.18], [side * 6.3, terrainHeight(side * 6.3, z) + 1.06, z]);
       }
+    }
+    if (map === 'ember') {
+      const forge = new THREE.Mesh(new THREE.TorusGeometry(13, 1.1, 6, 32), this.gold);
+      forge.rotation.x = Math.PI / 2; forge.position.set(0, 9, -22); this.root.add(forge);
+      for (let i = 0; i < 4; i++) {
+        const x = i % 2 ? 29 : -29, z = -54 + Math.floor(i / 2) * 18;
+        part(this.root, this.darkStone, [5, 13, 5], [x, terrainHeight(x, z) + 6.5, z]);
+        part(this.root, this.glow, [5.2, 0.45, 5.2], [x, terrainHeight(x, z) + 10, z]);
+        part(this.root, this.darkStone, [3, 1.4, 3], [x, terrainHeight(x, z) + 13.4, z]);
+        this.colliders.push({ x, z, radius: 3, height: 13 });
+      }
+      const fire = new THREE.PointLight('#ff9a6a', 34, 58, 2); fire.position.set(0, 12, -22); this.root.add(fire);
+    }
+    if (map === 'verdant') {
+      const canopy = new THREE.Mesh(new THREE.TorusGeometry(19, 0.85, 6, 40), this.moss);
+      canopy.rotation.x = Math.PI / 2; canopy.position.set(0, 17, -20); canopy.castShadow = true; this.root.add(canopy);
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4, x = Math.cos(a) * 19, z = -20 + Math.sin(a) * 19;
+        part(this.root, this.darkStone, [1.3, 14, 1.3], [x, terrainHeight(x, z) + 7, z], [0, a, 0.08]);
+        part(this.root, this.moss, [1.6, 1.1, 1.6], [x, terrainHeight(x, z) + 14, z], [0, a, 0]);
+        this.colliders.push({ x, z, radius: 1.5, height: 14 });
+      }
+      const glow = new THREE.PointLight('#9df5b8', 22, 48, 2); glow.position.set(0, 14, -20); this.root.add(glow);
     }
   }
 
@@ -300,7 +338,7 @@ export class World {
       inner.position.z = 0.7 + i * 0.05; group.add(inner); this.portalRings.push(inner);
     }
     for (let i = 0; i < 6; i++) part(this.root, this.stone, [15 + i * 1.7, 0.5, 1.5], [0, 0.55 + (5 - i) * 0.4, -40 + i * 1.35]);
-    const portalLight = new THREE.PointLight('#a9b3cd', 35, 32, 2); portalLight.position.set(0, 8, -38); this.root.add(portalLight);
+    const portalLight = new THREE.PointLight(this.theme.glow, 35, 32, 2); portalLight.position.set(0, 8, -38); this.root.add(portalLight);
     return { group, material };
   }
 
@@ -323,17 +361,17 @@ export class World {
       if (i < 45 && Math.abs(x) < 40 && z > -60) x += Math.sign(x || 1) * 37;
       quat.setFromEuler(new THREE.Euler(random() * 0.4, random() * 6, random() * 0.4));
       matrix.compose(new THREE.Vector3(x, terrainHeight(x, z) + scale * 0.15, z), quat, new THREE.Vector3(scale * 1.5, scale * (0.6 + random() * 0.7), scale));
-      stones.setMatrixAt(i, matrix); stones.setColorAt(i, color.setHSL(0.13 + random() * 0.04, 0.1 + random() * 0.14, 0.54 + random() * 0.2));
+      stones.setMatrixAt(i, matrix); stones.setColorAt(i, color.setHSL(this.theme.rockHue + random() * 0.04, 0.1 + random() * 0.14, 0.54 + random() * 0.2));
     }
     stones.castShadow = true; stones.receiveShadow = true; this.root.add(stones);
   }
 
   private addTrees(quality: 'high' | 'low') {
-    const count = quality === 'high' ? 2400 : 1250;
-    const leafMaterial = new THREE.MeshStandardMaterial({ map: leafTexture(), color: '#5a6b96', alphaTest: 0.42, side: THREE.DoubleSide, roughness: 1 });
+    const count = Math.round((quality === 'high' ? 2400 : 1250) * this.theme.treeDensity);
+    const leafMaterial = new THREE.MeshStandardMaterial({ map: leafTexture(), color: this.theme.leaf, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 1 });
     const leaves = new THREE.InstancedMesh(new THREE.PlaneGeometry(4.5, 4.5), leafMaterial, count);
     const random = this.random, dummy = new THREE.Object3D(), color = new THREE.Color();
-    const trunkMaterial = new THREE.MeshStandardMaterial({ color: '#343a49', roughness: 1, map: this.stone.map });
+    const trunkMaterial = new THREE.MeshStandardMaterial({ color: this.theme.darkStone, roughness: 1, map: this.stone.map });
     const trees: { x: number; z: number; height: number; spread: number }[] = [];
     for (let i = 0; i < 43; i++) {
       const side = i % 2 ? -1 : 1;
@@ -354,7 +392,7 @@ export class World {
       dummy.position.set(t.x + Math.cos(angle) * radius, t.height + random() * 4 - radius * 0.15, t.z + Math.sin(angle) * radius);
       dummy.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
       const scale = 0.65 + random() * 0.7; dummy.scale.setScalar(scale); dummy.updateMatrix(); leaves.setMatrixAt(i, dummy.matrix);
-      leaves.setColorAt(i, color.setHSL(0.2 + random() * 0.035, 0.25 + random() * 0.15, 0.48 + random() * 0.22));
+      leaves.setColorAt(i, color.setHSL(this.theme.leafHue + random() * 0.04, 0.25 + random() * 0.15, 0.48 + random() * 0.22));
     }
     leaves.castShadow = true; leaves.receiveShadow = true; this.root.add(leaves); return leaves;
   }
@@ -364,7 +402,7 @@ export class World {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([-.05,0,0,.05,0,0,-.035,.35,.015,.035,.35,.015,-.02,.65,.06,.02,.65,.06,0,1,.15], 3));
     geometry.setIndex([0,1,2,1,3,2,2,3,4,3,5,4,4,5,6]); geometry.computeVertexNormals();
-    const material = new THREE.MeshStandardMaterial({ color: '#5b6c99', roughness: 1, side: THREE.DoubleSide });
+    const material = new THREE.MeshStandardMaterial({ color: this.theme.grass, roughness: 1, side: THREE.DoubleSide });
     material.onBeforeCompile = shader => {
       shader.uniforms.uWind = this.wind;
       shader.vertexShader = 'uniform float uWind;\n' + shader.vertexShader;
@@ -387,12 +425,12 @@ export class World {
 
   private addFlowers() {
     const count = 850, geometry = new THREE.IcosahedronGeometry(0.08, 0);
-    const flowers = new THREE.InstancedMesh(geometry, new THREE.MeshStandardMaterial({ color: '#b7bfd5', emissive: '#576484', emissiveIntensity: 0.14, roughness: 0.8 }), count);
+    const flowers = new THREE.InstancedMesh(geometry, new THREE.MeshStandardMaterial({ color: this.theme.flowerA, emissive: this.theme.flowerB, emissiveIntensity: 0.14, roughness: 0.8 }), count);
     const dummy = new THREE.Object3D(), color = new THREE.Color();
     for (let i = 0; i < count; i++) {
       const x = (this.random() - 0.5) * 91, z = this.random() * 100 - 56;
       dummy.position.set(x, terrainHeight(x, z) + 0.35 + this.random() * 0.33, z); dummy.scale.set(1, 0.5, 1); dummy.rotation.set(this.random(), this.random(), 0); dummy.updateMatrix(); flowers.setMatrixAt(i, dummy.matrix);
-      flowers.setColorAt(i, color.set(i % 4 ? '#bdc4d8' : '#bcb8d4'));
+      flowers.setColorAt(i, color.set(i % 4 ? this.theme.flowerA : this.theme.flowerB));
     }
     this.root.add(flowers);
   }
