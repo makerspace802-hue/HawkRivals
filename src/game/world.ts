@@ -6,7 +6,9 @@ import { createEngineer, createSailHelper, part } from './models';
 import { MAPS, type MapSpec } from './data';
 import type { EngineerClass, MapId } from './types';
 
-export interface Collider { x: number; z: number; radius: number; height: number; }
+export interface Collider { x: number; z: number; radius: number; height: number; base?: number; }
+type Surface = { x: number; z: number; w: number; d: number; y: number };
+type Ramp = { x: number; z: number; w: number; d: number; y0: number; y1: number; axis: 'x' | 'z' };
 
 const noiseGLSL = `
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
@@ -70,6 +72,8 @@ export class World {
   readonly assetsReady: Promise<void>;
   root = new THREE.Group();
   colliders: Collider[] = [];
+  private walkables: Surface[] = [];
+  private ramps: Ramp[] = [];
   engineer: THREE.Group;
   sailfin: THREE.Group;
   portal: THREE.Group;
@@ -163,7 +167,7 @@ export class World {
     const map = new THREE.CanvasTexture(canvas), geometry = new THREE.PlaneGeometry(1, 1);
     const material = new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
     for (const collider of this.colliders) {
-      const shadow = new THREE.Mesh(geometry, material); shadow.rotation.x = -Math.PI / 2; shadow.position.set(collider.x, terrainHeight(collider.x, collider.z) + .16, collider.z);
+      const shadow = new THREE.Mesh(geometry, material); shadow.rotation.x = -Math.PI / 2; shadow.position.set(collider.x, (collider.base ?? terrainHeight(collider.x, collider.z)) + .16, collider.z);
       shadow.scale.set(collider.radius * 4.2, collider.radius * 3.7, 1); this.root.add(shadow);
     }
   }
@@ -245,6 +249,7 @@ export class World {
 
   private addArchitecture() {
     const map = this.map;
+    if (map === 'citadel') { this.addCitadel(); return; }
     const towers: [number, number, number, number, boolean?][] = map === 'ember' ? [
       [-20, -34, 30, 5.2], [22, -44, 38, 5.6], [-36, -6, 22, 5, true], [35, 4, 20, 4.8, true],
       [-16, -12, 8, 3, true], [18, -10, 6, 3, true], [-48, -92, 45, 6.5], [45, -98, 40, 6.8],
@@ -310,8 +315,106 @@ export class World {
     }
   }
 
+  private floorDeck(x: number, z: number, w: number, d: number, y: number, material: THREE.Material = this.darkStone) {
+    part(this.root, material, [w, .7, d], [x, y - .35, z]);
+    part(this.root, this.paleStone, [w + .3, .14, d + .3], [x, y + .07, z]);
+    const top = y + .14;
+    this.walkables.push({ x, z, w, d, y: top });
+    for (const px of [x - w / 2 + 1.1, x, x + w / 2 - 1.1]) {
+      for (const pz of [z - d / 2 + 1.1, z + d / 2 - 1.1]) {
+        const base = terrainHeight(px, pz), height = top - base;
+        if (height < .9) continue;
+        part(this.root, this.stone, [.52, height, .52], [px, base + height / 2, pz]);
+        part(this.root, this.gold, [.74, .2, .74], [px, base + height - .1, pz]);
+      }
+    }
+    return top;
+  }
+
+  private floorRamp(x: number, z: number, w: number, d: number, y0: number, y1: number, axis: 'x' | 'z') {
+    const rise = y1 - y0, length = Math.hypot(d, rise);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? length : w, .55, axis === 'x' ? w : length), this.darkStone);
+    mesh.position.set(x, (y0 + y1) / 2 - .275, z);
+    if (axis === 'x') mesh.rotation.z = Math.atan2(rise, d); else mesh.rotation.x = -Math.atan2(rise, d);
+    mesh.castShadow = true; mesh.receiveShadow = true; this.root.add(mesh);
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? length : .14, .16, axis === 'x' ? .14 : length), this.gold);
+      rail.position.set(x + (axis === 'z' ? side * w / 2 : 0), (y0 + y1) / 2 + .45, z + (axis === 'x' ? side * w / 2 : 0));
+      rail.rotation.set(axis === 'z' ? -Math.atan2(rise, d) : 0, 0, axis === 'x' ? Math.atan2(rise, d) : 0); this.root.add(rail);
+    }
+    this.ramps.push({ x, z, w, d, y0, y1, axis });
+  }
+
+  private addCitadel() {
+    const ground = terrainHeight;
+    const west = this.floorDeck(-31, -14, 9, 44, 7.2);
+    const east = this.floorDeck(31, -14, 9, 44, 7.2);
+    const north = this.floorDeck(0, -38, 34, 8, 8.4);
+    const south = this.floorDeck(0, 17, 30, 8, 6.2);
+    this.floorDeck(0, -12, 52, 6, 13.5, this.paleStone);
+    // Four ground-to-rampart ramps plus the two long skybridge approaches.
+    this.floorRamp(0, -46, 7, 8, ground(0, -50), north, 'z');
+    this.floorRamp(-22.5, -14, 8, 8, west, ground(-18.5, -14), 'x');
+    this.floorRamp(22.5, -14, 8, 8, ground(18.5, -14), east, 'x');
+    this.floorRamp(0, 8.5, 7, 9, ground(0, 4), south, 'z');
+    this.floorRamp(0, -24.5, 7, 19, north, 13.5, 'z');
+    this.floorRamp(0, 2, 7, 22, 13.5, south, 'z');
+    // Low rampart walls make each tier readable without closing off the drop lanes.
+    const walls: [number, number, number, number, number, number][] = [
+      [west, 2, 4.2, 2.1, 1.15, -31], [west, -25, 4.2, 2.1, 1.15, -31],
+      [east, 2, 4.2, 2.1, 1.15, 31], [east, -25, 4.2, 2.1, 1.15, 31],
+      [north, -9, 4.2, 2.1, 1.2, 0], [north, 9, 4.2, 2.1, 1.2, 0],
+      [south, -8, 4.2, 2.1, 1.2, 0], [south, 8, 4.2, 2.1, 1.2, 0],
+    ];
+    for (const [base, z, w, d, h, x] of walls) {
+      part(this.root, this.darkStone, [w, h, d], [x, base + h / 2, z]);
+      part(this.root, this.gold, [w + .12, .14, d + .12], [x, base + h, z]);
+      this.colliders.push({ x, z, radius: Math.max(w, d) / 2 + .25, height: h, base });
+    }
+    // Spires, banners, and braziers frame the skybridge.
+    for (const side of [-1, 1]) {
+      for (const z of [-30, 2]) {
+        const x = side * 33.5, base = terrainHeight(x, z), top = 19 + Math.abs(z) * .12;
+        part(this.root, this.stone, [1.25, top, 1.25], [x, base + top / 2, z]);
+        part(this.root, this.gold, [1.75, .32, 1.75], [x, base + top, z]);
+        part(this.root, this.glow, [.34, .42, .34], [x, base + top + .3, z]);
+        const banner = new THREE.Mesh(new THREE.PlaneGeometry(3.1, 8.2), new THREE.MeshStandardMaterial({ color: this.theme.gold, emissive: this.theme.glow, emissiveIntensity: .18, side: THREE.DoubleSide, roughness: .9 }));
+        banner.position.set(x - side * 1.25, base + top * .62, z); banner.rotation.y = side * Math.PI / 2; this.root.add(banner);
+      }
+    }
+    for (const x of [-21, 0, 21]) {
+      part(this.root, this.stone, [.72, 13.1, .72], [x, terrainHeight(x, -12) + 6.55, -12]);
+      this.colliders.push({ x, z: -12, radius: .85, height: 12.6 });
+    }
+    for (const side of [-1, 1]) {
+      const x = side * 24.2;
+      part(this.root, this.darkStone, [1.1, 1.9, 1.1], [x, 15.35, -12]);
+      part(this.root, this.glow, [.55, .55, .55], [x, 16.2, -12]);
+      const light = new THREE.PointLight(this.theme.glow, 16, 26, 2); light.position.set(x, 16.4, -12); this.root.add(light);
+    }
+    for (let i = 0; i < 7; i++) {
+      const x = -18 + i * 6;
+      part(this.root, this.gold, [2.6, .08, .1], [x, 14.32, -9.1]);
+      part(this.root, this.gold, [2.6, .08, .1], [x, 14.32, -14.9]);
+    }
+  }
+
+  floorAt(x: number, z: number, feetY = Infinity) {
+    let height = terrainHeight(x, z);
+    const reach = feetY + .85;
+    for (const s of this.walkables) if (s.y <= reach && s.y > height && Math.abs(x - s.x) <= s.w / 2 && Math.abs(z - s.z) <= s.d / 2) height = s.y;
+    for (const r of this.ramps) {
+      const along = r.axis === 'x' ? x : z, cross = r.axis === 'x' ? z : x;
+      const min = (r.axis === 'x' ? r.x : r.z) - r.d / 2;
+      if (along < min || along > min + r.d || Math.abs(cross - (r.axis === 'x' ? r.z : r.x)) > r.w / 2) continue;
+      const h = r.y0 + (r.y1 - r.y0) * (along - min) / r.d;
+      if (h <= reach && h > height) height = h;
+    }
+    return height;
+  }
+
   private addPortal() {
-    const group = new THREE.Group(); group.position.set(0, 9.5, -43); this.root.add(group);
+    const group = new THREE.Group(); group.position.set(0, this.map === 'citadel' ? 18 : 9.5, this.map === 'citadel' ? -47 : -43); this.root.add(group);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(8.5, 1.05, 5, 64), this.gold); group.add(ring);
     const darkRing = new THREE.Mesh(new THREE.TorusGeometry(9.7, 0.4, 4, 48), this.darkStone); group.add(darkRing);
     for (let i = 0; i < 16; i++) {
@@ -337,7 +440,7 @@ export class World {
       const inner = new THREE.Mesh(new THREE.TorusGeometry(7.5 - i * 0.2, 0.035, 4, 120, Math.PI * 1.8), new THREE.MeshBasicMaterial({ color: '#91a0c6', transparent: true, opacity: 0.8 }));
       inner.position.z = 0.7 + i * 0.05; group.add(inner); this.portalRings.push(inner);
     }
-    for (let i = 0; i < 6; i++) part(this.root, this.stone, [15 + i * 1.7, 0.5, 1.5], [0, 0.55 + (5 - i) * 0.4, -40 + i * 1.35]);
+    if (this.map !== 'citadel') for (let i = 0; i < 6; i++) part(this.root, this.stone, [15 + i * 1.7, 0.5, 1.5], [0, 0.55 + (5 - i) * 0.4, -40 + i * 1.35]);
     const portalLight = new THREE.PointLight(this.theme.glow, 35, 32, 2); portalLight.position.set(0, 8, -38); this.root.add(portalLight);
     return { group, material };
   }
@@ -439,8 +542,8 @@ export class World {
     const positions: number[] = [], random = this.random;
     for (let i = 0; i < 260; i++) positions.push((random() - 0.5) * 120, 0.5 + random() * 23, (random() - 0.5) * 120);
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const tint = this.map === 'ember' ? '#ffb27a' : this.map === 'verdant' ? '#b6ffd0' : '#c3cadc';
-    const dust = new THREE.Points(geometry, new THREE.PointsMaterial({ color: tint, size: this.map === 'ember' ? 0.21 : 0.27, map: radialTexture(), transparent: true, opacity: this.map === 'verdant' ? 0.62 : 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const tint = this.map === 'ember' ? '#ffb27a' : this.map === 'verdant' ? '#b6ffd0' : this.map === 'citadel' ? '#ffd9a0' : '#c3cadc';
+    const dust = new THREE.Points(geometry, new THREE.PointsMaterial({ color: tint, size: this.map === 'ember' ? 0.21 : this.map === 'citadel' ? 0.24 : 0.27, map: radialTexture(), transparent: true, opacity: this.map === 'verdant' ? 0.62 : 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.root.add(dust); return dust;
   }
 
@@ -460,6 +563,7 @@ export class World {
     this.dust.rotation.y = t * 0.005;
     if (this.map === 'ember') this.dust.position.y = Math.sin(t * 0.35) * 1.8;
     else if (this.map === 'verdant') this.dust.position.x = Math.sin(t * 0.2) * 2;
+    else if (this.map === 'citadel') this.dust.position.y = Math.sin(t * 0.45) * 1.2;
     this.engineer.rotation.z = Math.sin(t * 0.6) * 0.008;
   }
 }

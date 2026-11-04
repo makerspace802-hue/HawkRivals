@@ -161,7 +161,7 @@ export function createWeapon(id: WeaponId) {
     part(group, bronze, [0.2, 0.21, 0.56], [0, 0.03, -0.05], undefined, 0.035);
     part(group, ivory, [0.18, 0.09, 0.49], [0, 0.18, -0.1], undefined, 0.015);
     const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.22, 12), steel);
-    cylinder.rotation.x = Math.PI / 2; cylinder.position.z = 0.06; group.add(cylinder);
+    cylinder.rotation.x = Math.PI / 2; cylinder.position.z = 0.06; group.add(cylinder); group.userData.cylinder = cylinder;
     part(group, gunmetal, [0.11, 0.14, 0.2], [0, 0.05, -0.41], undefined, 0.015);
     part(group, orange, [0.015, 0.055, 0.31], [0.106, 0.05, -0.1]);
     part(group, orange, [0.033, 0.07, 0.026], [0, 0.26, -0.29]);
@@ -194,7 +194,6 @@ export function createWeapon(id: WeaponId) {
     part(group, bronze, [0.04, 0.2, 0.11], [0.13, 0.01, 0.245]);
   }
   if (id === 'shotgun') {
-    part(group, steel, [.32, .2, .78], [0, -.02, -.55], undefined, .04);
     for (const side of [-1, 1]) { const tube = new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .8, 10), gunmetal); tube.rotation.x = Math.PI / 2; tube.position.set(side * .09, -.09, -.68); group.add(tube); }
     part(group, orange, [.34, .035, .18], [0, .13, -.3]);
   }
@@ -212,7 +211,27 @@ export function createWeapon(id: WeaponId) {
     part(group, ivory, [.08, .3, .18], [0, -.22, .35], [-.4, 0, 0], .02);
     part(group, blue, [.04, .04, .7], [0, .18, -.5]);
   }
-  mergeModel(group);
+  const animated: THREE.Object3D[] = [];
+  if (id !== 'handcannon' && id !== 'shotgun') {
+    const mag = new THREE.Group(); mag.position.set(0, -.25, .06); group.add(mag);
+    part(mag, gunmetal, [.18, .34, .21], [0, 0, 0], [.12, 0, 0], .025);
+    part(mag, bronze, [.2, .06, .23], [0, -.14, 0], [.12, 0, 0], .01);
+    mag.userData.baseY = mag.position.y; group.userData.magazine = mag; animated.push(mag);
+  }
+  if (id === 'sniper' || id === 'scout') {
+    const bolt = new THREE.Group(); bolt.position.set(.15, .09, .17); group.add(bolt);
+    part(bolt, gunmetal, [.26, .045, .045], [.08, 0, 0]);
+    part(bolt, ivory, [.07, .07, .07], [.22, 0, 0], undefined, .02);
+    bolt.userData.baseX = bolt.position.x; group.userData.bolt = bolt; animated.push(bolt);
+  }
+  if (id === 'shotgun') {
+    const pump = new THREE.Group(); pump.position.set(0, -.09, -.55); group.add(pump);
+    part(pump, steel, [.36, .18, .48], [0, 0, 0], undefined, .04);
+    for (const side of [-1, 1]) part(pump, bronze, [.05, .03, .34], [side * .16, .11, 0]);
+    pump.userData.baseZ = pump.position.z; group.userData.pump = pump; animated.push(pump);
+  }
+  if (group.userData.cylinder) { group.userData.cylinderBase = group.userData.cylinder.rotation.clone(); animated.push(group.userData.cylinder); }
+  mergeModel(group, animated);
   return group;
 }
 

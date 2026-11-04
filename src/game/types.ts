@@ -1,7 +1,7 @@
 export type EngineerClass = 'rigger' | 'aerostat' | 'mistwright';
 export type WeaponId = 'auto' | 'handcannon' | 'scout' | 'spectre' | 'shotgun' | 'sniper' | 'burst' | 'lmg';
 export type GamePhase = 'menu' | 'playing' | 'paused' | 'ended';
-export type MapId = 'turbine' | 'ember' | 'verdant';
+export type MapId = 'turbine' | 'ember' | 'verdant' | 'citadel';
 
 export interface EngineerSpec {
   id: EngineerClass; name: string; role: string; color: string; ability: string;
@@ -10,7 +10,7 @@ export interface EngineerSpec {
 export interface WeaponSpec {
   id: WeaponId; name: string; type: string; damage: number; magazine: number;
   rate: number; reload: number; spread: number; pellets: number; range: number;
-  automatic: boolean; color: string;
+  automatic: boolean; color: string; weight: number; falloffStart: number; minDamage: number;
 }
 export interface Settings { volume: number; sensitivity: number; quality: 'high' | 'low'; reducedMotion: boolean; invertY: boolean; }
 export interface NetPlayer {

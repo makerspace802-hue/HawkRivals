@@ -6,14 +6,14 @@ export const CREWS: EngineerSpec[] = [
   { id: 'mistwright', name: 'Mistwright', role: 'TACTICIAN', color: '#c5a7f2', ability: 'Mist Step', abilityDescription: 'Turn briefly untargetable and surge with renewed speed.', health: 100, speed: 8.8, cooldown: 12 },
 ];
 export const WEAPONS: WeaponSpec[] = [
-  { id: 'auto', name: 'Coil Nine', type: 'ASSAULT RIFLE', damage: 26, magazine: 30, rate: .1, reload: 1.65, spread: .006, pellets: 1, range: 120, automatic: true, color: '#87eee5' },
-  { id: 'spectre', name: 'Vanta SMG', type: 'SUBMACHINE GUN', damage: 18, magazine: 36, rate: .068, reload: 1.45, spread: .011, pellets: 1, range: 65, automatic: true, color: '#ffc078' },
-  { id: 'burst', name: 'Trident', type: 'BURST RIFLE', damage: 34, magazine: 24, rate: .16, reload: 1.75, spread: .004, pellets: 1, range: 135, automatic: true, color: '#b8a0ff' },
-  { id: 'handcannon', name: 'Rainbell', type: 'HAND CANNON', damage: 62, magazine: 8, rate: .34, reload: 1.8, spread: .003, pellets: 1, range: 100, automatic: false, color: '#ffb072' },
-  { id: 'scout', name: 'Longdraft', type: 'MARKSMAN RIFLE', damage: 48, magazine: 16, rate: .22, reload: 1.55, spread: .002, pellets: 1, range: 160, automatic: false, color: '#8fe1bd' },
-  { id: 'shotgun', name: 'Gale-8', type: 'TACTICAL SHOTGUN', damage: 13, magazine: 7, rate: .72, reload: 2.1, spread: .052, pellets: 8, range: 35, automatic: false, color: '#ff8d78' },
-  { id: 'sniper', name: 'Horizon', type: 'BOLT SNIPER', damage: 145, magazine: 5, rate: 1.15, reload: 2.5, spread: .0005, pellets: 1, range: 220, automatic: false, color: '#86c8ff' },
-  { id: 'lmg', name: 'Storm Drum', type: 'LIGHT MACHINE GUN', damage: 23, magazine: 60, rate: .09, reload: 3.1, spread: .013, pellets: 1, range: 105, automatic: true, color: '#e6d787' },
+  { id: 'auto', name: 'Coil Nine', type: 'ASSAULT RIFLE', damage: 23, magazine: 30, rate: .105, reload: 1.7, spread: .0055, pellets: 1, range: 110, automatic: true, color: '#87eee5', weight: .02, falloffStart: 55, minDamage: .72 },
+  { id: 'spectre', name: 'Vanta SMG', type: 'SUBMACHINE GUN', damage: 16, magazine: 36, rate: .075, reload: 1.4, spread: .012, pellets: 1, range: 60, automatic: true, color: '#ffc078', weight: 0, falloffStart: 22, minDamage: .58 },
+  { id: 'burst', name: 'Trident', type: 'BURST RIFLE', damage: 31, magazine: 24, rate: .17, reload: 1.7, spread: .0035, pellets: 1, range: 135, automatic: true, color: '#b8a0ff', weight: .03, falloffStart: 75, minDamage: .85 },
+  { id: 'handcannon', name: 'Rainbell', type: 'HAND CANNON', damage: 58, magazine: 8, rate: .38, reload: 1.8, spread: .0025, pellets: 1, range: 90, automatic: false, color: '#ffb072', weight: .01, falloffStart: 45, minDamage: .7 },
+  { id: 'scout', name: 'Longdraft', type: 'MARKSMAN RIFLE', damage: 44, magazine: 16, rate: .25, reload: 1.55, spread: .0018, pellets: 1, range: 160, automatic: false, color: '#8fe1bd', weight: .04, falloffStart: 90, minDamage: .88 },
+  { id: 'shotgun', name: 'Gale-8', type: 'TACTICAL SHOTGUN', damage: 15, magazine: 7, rate: .78, reload: 2.1, spread: .05, pellets: 8, range: 32, automatic: false, color: '#ff8d78', weight: .02, falloffStart: 9, minDamage: .32 },
+  { id: 'sniper', name: 'Horizon', type: 'BOLT SNIPER', damage: 135, magazine: 5, rate: 1.15, reload: 2.5, spread: .0005, pellets: 1, range: 220, automatic: false, color: '#86c8ff', weight: .08, falloffStart: 130, minDamage: .95 },
+  { id: 'lmg', name: 'Storm Drum', type: 'LIGHT MACHINE GUN', damage: 19, magazine: 60, rate: .085, reload: 3.2, spread: .015, pellets: 1, range: 100, automatic: true, color: '#e6d787', weight: .1, falloffStart: 48, minDamage: .68 },
 ];
 export interface MapSpec {
   id: MapId; name: string; district: string; tagline: string; accent: string;
@@ -42,6 +42,12 @@ export const MAPS: MapSpec[] = [
     terrainBase: '#3f6654', terrainLight: '#6e9a77', terrainPath: '#9ab88e', terrainTint: '#a8c8ad',
     stone: '#5c6d69', darkStone: '#3c4e48', paleStone: '#94a89c', moss: '#3f7a52', gold: '#84b57a', glow: '#b6ffd0',
     leaf: '#4f8a64', leafHue: .32, grass: '#4f7c5c', treeDensity: 1.35, flowerA: '#d8ffd0', flowerB: '#9df5b8', rockHue: .3 },
+  { id: 'citadel', name: 'Aurora Citadel', district: 'SUNSET SPAN', tagline: 'Tiered ramparts, drop lanes, and a skybridge.', accent: '#ffd36a',
+    skyLow: '#e2c08a', skyHigh: '#243b63', cloud: '#f0d9b0', fog: '#8899b5', fogDensity: .0054,
+    mountains: ['#4e5573', '#727b98', '#9ba6bb'],
+    terrainBase: '#566b7a', terrainLight: '#8296a3', terrainPath: '#c1a77c', terrainTint: '#b6c4cc',
+    stone: '#7a7d84', darkStone: '#4b4f59', paleStone: '#b7b5a8', moss: '#5d735f', gold: '#d9ae5f', glow: '#ffd98a',
+    leaf: '#6f8f6a', leafHue: .18, grass: '#5f7f6d', treeDensity: .8, flowerA: '#ffe6a8', flowerB: '#d9ae5f', rockHue: .1 },
 ];
 export const DEFAULT_SETTINGS = { volume: .35, sensitivity: 1, quality: 'high' as const, reducedMotion: false, invertY: false };
 export const EMPTY_HUD: HUDState = {
