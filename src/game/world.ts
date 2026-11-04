@@ -119,7 +119,7 @@ export class World {
     this.leaves = this.addTrees(quality);
     this.grass = this.addGrass(quality);
     this.addFlowers();
-    this.engineer = createEngineer('rigger'); this.engineer.position.set(12, terrainHeight(12, 25), 25); this.engineer.scale.setScalar(1.75); this.engineer.rotation.y = Math.PI - 0.12; this.root.add(this.engineer);
+    this.engineer = createEngineer('rigger'); this.engineer.position.set(12, terrainHeight(12, 25), 25); this.engineer.scale.setScalar(1.75); this.engineer.rotation.y = 0.65; this.root.add(this.engineer);
     this.sailfin = createSailHelper(); this.sailfin.position.set(13.8, 3.6, 23.9); this.sailfin.scale.setScalar(0.72); this.root.add(this.sailfin);
     this.dust = this.addDust();
     this.addContactShadows();

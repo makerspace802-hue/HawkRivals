@@ -125,6 +125,26 @@ export function createEngineer(engineerClass: EngineerClass = 'rigger') {
   const cloth = new THREE.Mesh(clothGeometry, new THREE.MeshStandardMaterial({ color: palette.trim, emissive: palette.glow, emissiveIntensity: 0.14, roughness: 0.93, side: THREE.DoubleSide }));
   cloth.position.set(0, 1.62, -0.52); cloth.castShadow = true; group.add(cloth);
 
+  if (engineerClass === 'mistwright') {
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.36, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6), under);
+    hood.position.set(0, 2.2, -0.03); hood.rotation.x = -0.12; hood.castShadow = true; group.add(hood);
+    const capeMaterial = new THREE.MeshStandardMaterial({ color: palette.trim, emissive: palette.glow, emissiveIntensity: 0.1, roughness: 0.95, side: THREE.DoubleSide });
+    const cape = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 1.24, 8, 8), capeMaterial);
+    cape.position.set(0, 1.24, -0.58); cape.rotation.x = -0.06; cape.castShadow = true; group.add(cape);
+    group.userData.cape = cape;
+  }
+  if (engineerClass === 'aerostat') {
+    for (const side of [-1, 1]) {
+      part(group, bone, [0.17, 0.42, 0.17], [side * 0.52, 1.98, -0.12], [0, 0, side * 0.06], 0.05);
+      part(group, trim, [0.2, 0.06, 0.2], [side * 0.52, 1.78, -0.12], undefined, 0.02);
+      part(group, accent, [0.06, 0.06, 0.06], [side * 0.52, 2.21, -0.12], undefined, 0.015);
+    }
+  }
+  if (engineerClass === 'rigger') {
+    part(group, trim, [0.34, 0.05, 0.56], [0, 1.79, -0.34], [0.34, 0, 0], 0.02);
+    part(group, accent, [0.24, 0.015, 0.48], [0, 1.8, -0.36], [0.34, 0, 0], 0.008);
+  }
+
   const hand = new THREE.Group(); hand.position.set(0.46, 1.12, 0.5); group.add(hand);
   const defaultWeapon = createWeapon('auto'); defaultWeapon.scale.setScalar(0.6); defaultWeapon.rotation.set(0, Math.PI, 0); defaultWeapon.position.set(0, 0, 0.38); hand.add(defaultWeapon);
   group.userData.cloth = cloth; group.userData.hand = hand; group.userData.weapon = defaultWeapon; group.userData.weaponId = 'auto';
